@@ -1,0 +1,70 @@
+{
+  "brand": {
+    "name": "Support",
+    "color": "#5865F2",
+    "footer": "System ticketów"
+  },
+  "panel": {
+    "title": "🎫 Centrum pomocy",
+    "description": "Potrzebujesz pomocy? Wybierz kategorię z listy poniżej, a otworzymy dla Ciebie prywatny kanał z naszym zespołem.\n\n**Zanim otworzysz ticket:**\n• Opisz problem jak najdokładniej\n• Nie pinguj administracji\n• Jeden problem = jeden ticket",
+    "image": null
+  },
+  "ticketTypes": [
+    {
+      "id": "support",
+      "label": "Pomoc ogólna",
+      "emoji": "🛠️",
+      "description": "Pytania i problemy techniczne",
+      "channelPrefix": "pomoc",
+      "staffRoleIds": [],
+      "questions": [
+        { "id": "subject", "label": "Temat", "style": "short", "placeholder": "Np. nie działa mi ranga", "required": true, "maxLength": 100 },
+        { "id": "details", "label": "Opisz dokładnie problem", "style": "paragraph", "placeholder": "Co się stało, kiedy, co już próbowałeś?", "required": true, "maxLength": 1000 }
+      ]
+    },
+    {
+      "id": "report",
+      "label": "Zgłoszenie gracza",
+      "emoji": "🚨",
+      "description": "Zgłoś osobę łamiącą regulamin",
+      "channelPrefix": "zgloszenie",
+      "staffRoleIds": [],
+      "questions": [
+        { "id": "who", "label": "Kogo zgłaszasz? (nick / ID)", "style": "short", "required": true, "maxLength": 100 },
+        { "id": "what", "label": "Co się stało?", "style": "paragraph", "required": true, "maxLength": 1000 },
+        { "id": "proof", "label": "Dowody (linki do screenów)", "style": "paragraph", "required": false, "maxLength": 500 }
+      ]
+    },
+    {
+      "id": "partnership",
+      "label": "Współpraca",
+      "emoji": "🤝",
+      "description": "Partnerstwa i propozycje współpracy",
+      "channelPrefix": "wspolpraca",
+      "staffRoleIds": [],
+      "questions": [
+        { "id": "offer", "label": "Twoja propozycja", "style": "paragraph", "required": true, "maxLength": 1000 }
+      ]
+    },
+    {
+      "id": "appeal",
+      "label": "Odwołanie od kary",
+      "emoji": "⚖️",
+      "description": "Odwołaj się od bana, muta lub ostrzeżenia",
+      "channelPrefix": "odwolanie",
+      "staffRoleIds": [],
+      "questions": [
+        { "id": "punishment", "label": "Jaką karę otrzymałeś i kiedy?", "style": "short", "required": true, "maxLength": 150 },
+        { "id": "why", "label": "Dlaczego kara powinna zostać zdjęta?", "style": "paragraph", "required": true, "maxLength": 1000 }
+      ]
+    }
+  ],
+  "defaults": {
+    "maxOpenTicketsPerUser": 2,
+    "autoCloseHours": 48,
+    "autoCloseWarningHours": 24,
+    "deleteDelaySeconds": 5,
+    "dmTranscript": true,
+    "askForRating": true
+  }
+}
