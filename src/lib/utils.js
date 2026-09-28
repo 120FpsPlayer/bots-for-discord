@@ -1,6 +1,7 @@
-const { EmbedBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
+const { EmbedBuilder, MessageFlags } = require('discord.js');
 const config = require('./config');
 const db = require('./db');
+const perms = require('./permissions');
 
 const COLORS = {
   brand: config.brand.colorInt,
@@ -40,17 +41,17 @@ async function reply(interaction, payload, ephemeral = true) {
 
 const replyError = (interaction, text) => reply(interaction, { embeds: [fail(text)] });
 
+/** Role z dostępem do ticketu: .env (admin + support) + /setup + config.json. */
 function staffRoleIds(guildId, type) {
-  const settings = db.settings(guildId);
-  return [...new Set([...(settings.staffRoleIds ?? []), ...(type?.staffRoleIds ?? [])])];
+  return perms.ticketRoleIds(db.settings(guildId).staffRoleIds, type);
 }
 
 function isStaff(member, type = null) {
   if (!member) return false;
-  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
-  if (member.permissions.has(PermissionFlagsBits.ManageGuild)) return true;
-  return member.roles.cache.hasAny(...staffRoleIds(member.guild.id, type));
+  return perms.isStaff(member, db.settings(member.guild.id).staffRoleIds, type);
 }
+
+const isAdmin = (member) => perms.isAdmin(member);
 
 /**
  * Discord pozwala na 2 zmiany nazwy kanału na 10 minut. discord.js w takim
@@ -123,6 +124,7 @@ module.exports = {
   reply,
   replyError,
   isStaff,
+  isAdmin,
   staffRoleIds,
   safeRename,
   slug,

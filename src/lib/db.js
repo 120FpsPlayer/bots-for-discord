@@ -66,7 +66,18 @@ module.exports = {
   load,
   flush,
 
-  settings: (guildId) => guild(guildId).settings,
+  /** Ustawienia serwera; kanały z .env służą jako wartości domyślne. */
+  settings(guildId) {
+    const { env } = require('./permissions');
+    const s = guild(guildId).settings;
+    return {
+      ...s,
+      categoryId: s.categoryId ?? env.categoryId,
+      closedCategoryId: s.closedCategoryId ?? env.closedCategoryId,
+      logChannelId: s.logChannelId ?? env.logChannelId,
+      transcriptChannelId: s.transcriptChannelId ?? env.transcriptChannelId,
+    };
+  },
 
   updateSettings(guildId, patch) {
     const g = guild(guildId);

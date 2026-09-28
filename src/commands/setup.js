@@ -1,6 +1,7 @@
-const { SlashCommandBuilder, InteractionContextType, PermissionFlagsBits, ChannelType, MessageFlags } = require('discord.js');
+const { SlashCommandBuilder, InteractionContextType, ChannelType, MessageFlags } = require('discord.js');
 const db = require('../lib/db');
-const { embed, COLORS, reply, replyError } = require('../lib/utils');
+const { embed, COLORS, reply, replyError, isAdmin } = require('../lib/utils');
+const { env, ticketRoleIds } = require('../lib/permissions');
 
 const PRIVATE = (guild, staffRoleIds) => [
   { id: guild.roles.everyone.id, deny: ['ViewChannel'] },
@@ -12,7 +13,6 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('setup')
     .setDescription('Konfiguracja systemu ticketów')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
     .setContexts(InteractionContextType.Guild)
     .addSubcommand((s) =>
       s
@@ -71,6 +71,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('pokaz').setDescription('Pokaż aktualną konfigurację')),
 
   async execute(interaction) {
+    if (!isAdmin(interaction.member)) return replyError(interaction, 'Tę komendę mogą używać tylko administratorzy bota (OWNER_IDS / ADMIN_ROLE_IDS).');
     const sub = interaction.options.getSubcommand();
     const guild = interaction.guild;
 
@@ -94,13 +95,13 @@ module.exports = {
         name: 'ticket-logi',
         type: ChannelType.GuildText,
         parent: closed.id,
-        permissionOverwrites: PRIVATE(guild, staff),
+        permissionOverwrites: PRIVATE(guild, ticketRoleIds(staff).filter((id) => guild.roles.cache.has(id))),
       });
       const transcripts = await guild.channels.create({
         name: 'ticket-transkrypty',
         type: ChannelType.GuildText,
         parent: closed.id,
-        permissionOverwrites: PRIVATE(guild, staff),
+        permissionOverwrites: PRIVATE(guild, ticketRoleIds(staff).filter((id) => guild.roles.cache.has(id))),
       });
 
       db.updateSettings(guild.id, {
@@ -164,6 +165,7 @@ module.exports = {
 function summary(guild) {
   const s = db.settings(guild.id);
   const ch = (id) => (id ? `<#${id}>` : '*nie ustawiono*');
+  const roles = (list) => list.map((id) => `<@&${id}>`).join(', ') || '*brak*';
   return embed(COLORS.info)
     .setTitle('⚙️ Konfiguracja ticketów')
     .addFields(
@@ -173,7 +175,20 @@ function summary(guild) {
       { name: 'Kanał logów', value: ch(s.logChannelId), inline: true },
       { name: 'Kanał transkryptów', value: ch(s.transcriptChannelId), inline: true },
       { name: '​', value: '​', inline: true },
-      { name: 'Role supportu', value: s.staffRoleIds.map((id) => `<@&${id}>`).join(', ') || '*brak – tylko administratorzy*' },
+      { name: 'Role supportu (/setup)', value: roles(s.staffRoleIds) },
+      { name: '👑 Właściciele bota (.env)', value: env.ownerIds.map((id) => `<@${id}>`).join(', ') || '*brak*', inline: true },
+      { name: '🛡️ Role adminów (.env)', value: roles(env.adminRoleIds), inline: true },
+      { name: '🎧 Role supportu (.env)', value: roles(env.supportRoleIds), inline: true },
+      { name: '✅ Kto może otwierać', value: env.openRoleIds.length ? roles(env.openRoleIds) : 'wszyscy', inline: true },
+      { name: '⛔ Zablokowane role', value: roles(env.blockedRoleIds), inline: true },
+      {
+        name: '🔧 Opcje',
+        value:
+          `Admini Discorda = admini bota: **${env.discordAdminsAreAdmins ? 'tak' : 'nie'}**\n` +
+          `Support może usuwać: **${env.staffCanDelete ? 'tak' : 'nie'}**\n` +
+          `Autor może zamknąć: **${env.ownerCanClose ? 'tak' : 'nie'}**`,
+        inline: true,
+      },
       { name: 'Limit na osobę', value: s.maxOpenTicketsPerUser ? String(s.maxOpenTicketsPerUser) : 'bez limitu', inline: true },
       {
         name: 'Auto-zamykanie',

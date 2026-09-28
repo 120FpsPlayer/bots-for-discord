@@ -4,7 +4,6 @@ const {
   ButtonStyle,
   ChannelType,
   ModalBuilder,
-  PermissionFlagsBits: P,
   StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
@@ -12,11 +11,13 @@ const {
 const config = require('./config');
 const db = require('./db');
 const { createTranscript } = require('./transcript');
+const { openDeniedReason } = require('./permissions');
 const {
   COLORS,
   PRIORITIES,
   embed,
   staffRoleIds,
+  isAdmin,
   safeRename,
   channelName,
   duration,
@@ -103,6 +104,8 @@ function checkCanOpen(member) {
   if (!category || category.type !== ChannelType.GuildCategory) {
     return 'System ticketów nie jest jeszcze skonfigurowany. Administrator musi użyć komendy `/setup ustaw`.';
   }
+  const roleError = openDeniedReason(member);
+  if (roleError) return roleError;
   if (db.isBlacklisted(member.guild.id, member.id)) {
     const entry = db.blacklist(member.guild.id).find((b) => b.userId === member.id);
     return `Masz blokadę na tworzenie ticketów.${entry?.reason ? `\n**Powód:** ${entry.reason}` : ''}`;
@@ -429,7 +432,7 @@ async function deleteTicket(channel, actor) {
 async function claimTicket(channel, member) {
   const ticket = requireOpen(channel);
   if (ticket.claimedBy === member.id) throw new UserError('Już obsługujesz ten ticket.');
-  if (ticket.claimedBy && !member.permissions.has(P.Administrator)) {
+  if (ticket.claimedBy && !isAdmin(member)) {
     throw new UserError(`Ten ticket obsługuje już <@${ticket.claimedBy}>.`);
   }
   db.updateTicket(channel.id, { claimedBy: member.id });
@@ -443,7 +446,7 @@ async function claimTicket(channel, member) {
 async function unclaimTicket(channel, member) {
   const ticket = requireOpen(channel);
   if (!ticket.claimedBy) throw new UserError('Ten ticket nie jest przez nikogo przejęty.');
-  if (ticket.claimedBy !== member.id && !member.permissions.has(P.Administrator)) {
+  if (ticket.claimedBy !== member.id && !isAdmin(member)) {
     throw new UserError('Tylko osoba obsługująca ticket (lub administrator) może go odpuścić.');
   }
   db.updateTicket(channel.id, { claimedBy: null });

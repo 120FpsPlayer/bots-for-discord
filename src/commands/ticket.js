@@ -2,6 +2,7 @@ const { SlashCommandBuilder, InteractionContextType, MessageFlags } = require('d
 const config = require('../lib/config');
 const db = require('../lib/db');
 const t = require('../lib/tickets');
+const { env } = require('../lib/permissions');
 const { COLORS, PRIORITIES, embed, reply, replyError, isStaff, slug, ts, duration } = require('../lib/utils');
 
 module.exports = {
@@ -57,7 +58,7 @@ module.exports = {
 
     const type = config.getType(ticket.typeId);
     const staff = isStaff(member, type);
-    const isOwner = ticket.ownerId === member.id;
+    const isOwner = ticket.ownerId === member.id && env.ownerCanClose;
 
     if (sub === 'zamknij') {
       if (!staff && !isOwner) return replyError(interaction, 'Nie masz uprawnień do zamknięcia tego ticketu.');

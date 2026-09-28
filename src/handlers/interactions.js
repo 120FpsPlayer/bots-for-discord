@@ -10,7 +10,8 @@ const {
 const config = require('../lib/config');
 const db = require('../lib/db');
 const t = require('../lib/tickets');
-const { COLORS, embed, reply, replyError, isStaff } = require('../lib/utils');
+const { COLORS, embed, reply, replyError, isStaff, isAdmin } = require('../lib/utils');
+const { env } = require('../lib/permissions');
 
 // ───────────────────────── otwieranie ticketu ─────────────────────────
 
@@ -97,7 +98,7 @@ async function handleTicketButton(interaction, action) {
   if (!ticket) return replyError(interaction, 'Ten kanał nie jest już ticketem.');
   const type = config.getType(ticket.typeId);
   const staff = isStaff(member, type);
-  const isOwner = ticket.ownerId === member.id;
+  const isOwner = ticket.ownerId === member.id && env.ownerCanClose;
 
   switch (action) {
     case 'close': {
@@ -138,7 +139,9 @@ async function handleTicketButton(interaction, action) {
       await interaction.message.edit({ components: [] }).catch(() => null);
       return reply(interaction, 'Ticket został ponownie otwarty.');
     case 'delete':
-      if (!staff) return replyError(interaction, 'Tylko zespół supportu może usuwać tickety.');
+      if (!(env.staffCanDelete ? staff : isAdmin(member))) {
+        return replyError(interaction, env.staffCanDelete ? 'Tylko zespół supportu może usuwać tickety.' : 'Tylko administratorzy mogą usuwać tickety.');
+      }
       await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       await t.deleteTicket(channel, member);
       await interaction.message.edit({ components: [] }).catch(() => null);
@@ -215,7 +218,7 @@ module.exports = async function handleInteraction(interaction, commands) {
       if (interaction.customId === 'ticket:close_modal') {
         const ticket = db.getTicket(interaction.channel.id);
         const type = ticket && config.getType(ticket.typeId);
-        if (!ticket || (!isStaff(interaction.member, type) && ticket.ownerId !== interaction.user.id)) {
+        if (!ticket || (!isStaff(interaction.member, type) && !(ticket.ownerId === interaction.user.id && env.ownerCanClose))) {
           return await replyError(interaction, 'Nie możesz zamknąć tego ticketu.');
         }
         const reason = interaction.fields.getTextInputValue('reason');

@@ -35,7 +35,7 @@ Kompletny bot do obsługi zgłoszeń napisany w **discord.js v14**. Cały interf
 4. Zainstaluj i skonfiguruj:
    ```bash
    npm install
-   cp .env.example .env     # uzupełnij DISCORD_TOKEN, CLIENT_ID (i opcjonalnie GUILD_ID)
+   cp .env.example .env     # uzupełnij DISCORD_TOKEN, CLIENT_ID oraz role (patrz niżej)
    npm run deploy           # rejestracja komend slash
    npm start
    ```
@@ -48,22 +48,61 @@ Kompletny bot do obsługi zgłoszeń napisany w **discord.js v14**. Cały interf
 
 > 💡 Rola bota musi być **wyżej** na liście ról niż role, którym nadaje uprawnienia.
 
+## 🔐 Uprawnienia i role – plik `.env`
+
+Wszystkie role i osoby ustawisz w `.env` (wiele ID oddzielasz przecinkami). ID skopiujesz po włączeniu
+**Trybu dewelopera** (Ustawienia → Zaawansowane), klikając PPM na osobę/rolę → *Kopiuj ID*.
+
+| Zmienna | Kto to jest | Co może |
+|---|---|---|
+| `OWNER_IDS` | 👑 **Właściciele bota** (ID użytkowników) | Wszystko, na każdym serwerze |
+| `ADMIN_ROLE_IDS` | 🛡️ **Administratorzy** | `/setup`, `/panel`, `/blacklist`, usuwanie ticketów, przejmowanie cudzych ticketów; widzą wszystkie tickety |
+| `SUPPORT_ROLE_IDS` | 🎧 **Support** | Widzi i obsługuje tickety: przejmuje, zamyka, dodaje osoby, priorytety, transkrypty, statystyki |
+| `SUPPORT_ROLE_IDS_<TYP>` | 🎧 Support jednej kategorii | Jak wyżej, ale tylko dla danego typu, np. `SUPPORT_ROLE_IDS_REPORT` |
+| `OPEN_ROLE_IDS` | ✅ **Kto może otwierać tickety** | Puste = wszyscy. Np. rola „Zweryfikowany" |
+| `BLOCKED_ROLE_IDS` | ⛔ **Kto nie może otwierać** | Np. rola „Wyciszony" |
+
+Opcje dodatkowe:
+
+| Zmienna | Domyślnie | Opis |
+|---|---|---|
+| `DISCORD_ADMINS_ARE_ADMINS` | `true` | Osoby z uprawnieniem Discorda *Administrator* / *Zarządzanie serwerem* są adminami bota. Ustaw `false`, jeśli dostęp ma wynikać **tylko** z `.env` |
+| `STAFF_CAN_DELETE` | `true` | `false` = tylko admini mogą usuwać tickety |
+| `OWNER_CAN_CLOSE` | `true` | Czy autor może sam zamknąć swój ticket |
+| `TICKET_CATEGORY_ID`, `CLOSED_CATEGORY_ID`, `LOG_CHANNEL_ID`, `TRANSCRIPT_CHANNEL_ID` | – | Kanały ustawione w `.env` zamiast przez `/setup` (ustawienia z `/setup` mają pierwszeństwo) |
+
+Przykład:
+
+```env
+OWNER_IDS=123456789012345678
+ADMIN_ROLE_IDS=234567890123456789
+SUPPORT_ROLE_IDS=345678901234567890,456789012345678901
+SUPPORT_ROLE_IDS_REPORT=567890123456789012
+OPEN_ROLE_IDS=678901234567890123
+BLOCKED_ROLE_IDS=789012345678901234
+```
+
+Role supportu możesz też dodawać komendą `/setup rola-dodaj` – oba źródła się sumują. Całą aktualną konfigurację
+(łącznie z rolami z `.env`) pokaże `/setup pokaz`.
+
+> Po zmianie `.env` zrestartuj bota.
+
 ## 📋 Komendy
 
 | Komenda | Opis | Kto |
 |---|---|---|
-| `/setup auto rola_supportu` | Tworzy kategorie + kanały logów i transkryptów | Zarządzanie serwerem |
-| `/setup ustaw …` | Ręczna konfiguracja (kategorie, kanały, limit, auto-zamykanie, ping) | Zarządzanie serwerem |
-| `/setup rola-dodaj` / `rola-usun` | Role supportu | Zarządzanie serwerem |
-| `/setup pokaz` | Aktualna konfiguracja | Zarządzanie serwerem |
-| `/panel [kanal] [styl]` | Wysyła panel ticketów | Zarządzanie serwerem |
+| `/setup auto rola_supportu` | Tworzy kategorie + kanały logów i transkryptów | Admin |
+| `/setup ustaw …` | Ręczna konfiguracja (kategorie, kanały, limit, auto-zamykanie, ping) | Admin |
+| `/setup rola-dodaj` / `rola-usun` | Role supportu | Admin |
+| `/setup pokaz` | Aktualna konfiguracja | Admin |
+| `/panel [kanal] [styl]` | Wysyła panel ticketów | Admin |
 | `/ticket zamknij [powod]` | Zamyka ticket | Support + autor |
 | `/ticket info` | Szczegóły ticketu | Wszyscy w tickecie |
 | `/ticket dodaj` / `usun` | Dodaje / usuwa osobę | Support |
 | `/ticket przejmij` / `odpusc` | Przejmuje / oddaje ticket | Support |
 | `/ticket priorytet` | Zmienia priorytet | Support |
 | `/ticket nazwa` | Zmienia nazwę kanału | Support |
-| `/blacklist dodaj` / `usun` / `lista` | Czarna lista | Moderatorzy |
+| `/blacklist dodaj` / `usun` / `lista` | Czarna lista | Support |
 | `/statystyki [pracownik] [dni]` | Statystyki i ranking | Support |
 
 Przyciski w tickecie: **🔒 Zamknij** (z potwierdzeniem i opcjonalnym powodem), **🙋 Przejmij / ↩️ Odpuść**, **📄 Transkrypt**, a po zamknięciu **🔓 Otwórz ponownie** i **🗑️ Usuń**.

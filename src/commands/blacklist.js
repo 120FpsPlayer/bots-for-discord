@@ -1,12 +1,11 @@
-const { SlashCommandBuilder, InteractionContextType, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const db = require('../lib/db');
-const { COLORS, embed, reply, replyError, ts } = require('../lib/utils');
+const { COLORS, embed, reply, replyError, ts, isStaff } = require('../lib/utils');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('blacklist')
     .setDescription('Blokowanie użytkowników przed tworzeniem ticketów')
-    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .setContexts(InteractionContextType.Guild)
     .addSubcommand((s) =>
       s
@@ -24,6 +23,7 @@ module.exports = {
     .addSubcommand((s) => s.setName('lista').setDescription('Lista zablokowanych')),
 
   async execute(interaction) {
+    if (!isStaff(interaction.member)) return replyError(interaction, 'Czarna lista jest dostępna tylko dla supportu i administracji.');
     const sub = interaction.options.getSubcommand();
     const guildId = interaction.guild.id;
 
