@@ -1,5 +1,6 @@
 const { SlashCommandBuilder, InteractionContextType, ChannelType } = require('discord.js');
 const { buildPanel } = require('../lib/tickets');
+const db = require('../lib/db');
 const { reply, replyError, isAdmin } = require('../lib/utils');
 
 module.exports = {
@@ -17,7 +18,10 @@ module.exports = {
       o
         .setName('styl')
         .setDescription('Wygląd panelu')
-        .addChoices({ name: 'Przyciski', value: 'buttons' }, { name: 'Lista rozwijana', value: 'select' }),
+        .addChoices(
+          { name: 'Karty z przyciskami (do 8 kategorii)', value: 'buttons' },
+          { name: 'Lista rozwijana', value: 'select' },
+        ),
     ),
 
   async execute(interaction) {
@@ -28,7 +32,8 @@ module.exports = {
     if (!channel.permissionsFor(me).has(['ViewChannel', 'SendMessages', 'EmbedLinks'])) {
       return replyError(interaction, `Nie mam uprawnień do wysyłania wiadomości na ${channel}.`);
     }
-    await channel.send(buildPanel(style));
-    return reply(interaction, `Panel został wysłany na ${channel}.`);
+    const message = await channel.send(buildPanel(interaction.guild, style));
+    db.addPanel(interaction.guild.id, { channelId: channel.id, messageId: message.id, style });
+    return reply(interaction, `Panel został wysłany na ${channel}. Statystyki na panelu będą odświeżać się automatycznie.`);
   },
 };

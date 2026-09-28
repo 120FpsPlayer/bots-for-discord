@@ -1,7 +1,12 @@
 const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const db = require('../lib/db');
+const config = require('../lib/config');
 const { COLORS, embed, reply, replyError, isStaff, duration } = require('../lib/utils');
 
+const bar = (n, total, width = 10) => {
+  const filled = total ? Math.round((n / total) * width) : 0;
+  return `\`${'█'.repeat(filled)}${'░'.repeat(width - filled)}\``;
+};
 const avg = (arr) => (arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : null);
 
 module.exports = {
@@ -41,6 +46,35 @@ module.exports = {
         { name: 'Śr. czas 1. odpowiedzi', value: responses.length ? duration(avg(responses)) : '—', inline: true },
         { name: 'Śr. czas rozwiązania', value: resolutions.length ? duration(avg(resolutions)) : '—', inline: true },
       );
+
+    // podział na kategorie
+    const perType = config.ticketTypes
+      .map((ty) => [ty, tickets.filter((x) => x.typeId === ty.id).length])
+      .filter(([, n]) => n > 0)
+      .sort((a, b) => b[1] - a[1])
+      .map(([ty, n]) => `${ty.emoji ?? '🎫'} ${ty.label} – **${n}** ${bar(n, tickets.length)}`);
+    if (perType.length) e.addFields({ name: '📂 Kategorie', value: perType.join('\n') });
+
+    // rozkład ocen
+    if (ratings.length) {
+      const dist = [5, 4, 3, 2, 1].map((n) => {
+        const c = ratings.filter((r) => r === n).length;
+        return `${n}⭐ ${bar(c, ratings.length)} ${c}`;
+      });
+      e.addFields({ name: '⭐ Rozkład ocen', value: dist.join('\n'), inline: true });
+    }
+
+    // aktywność tygodniowa
+    const last7 = db.tickets((x) => x.guildId === interaction.guild.id && x.createdAt >= Date.now() - 7 * 86_400_000).length;
+    const prev7 = db.tickets(
+      (x) => x.guildId === interaction.guild.id && x.createdAt >= Date.now() - 14 * 86_400_000 && x.createdAt < Date.now() - 7 * 86_400_000,
+    ).length;
+    const trend = prev7 ? Math.round(((last7 - prev7) / prev7) * 100) : null;
+    e.addFields({
+      name: '📅 Ostatnie 7 dni',
+      value: `**${last7}** ticketów${trend !== null ? ` (${trend >= 0 ? '📈 +' : '📉 '}${trend}% vs poprzedni tydzień)` : ''}`,
+      inline: true,
+    });
 
     if (!staffUser) {
       const board = new Map();

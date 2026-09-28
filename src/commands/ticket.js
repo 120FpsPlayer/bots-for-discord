@@ -48,6 +48,19 @@ module.exports = {
         .setDescription('Zmień nazwę kanału ticketu')
         .addStringOption((o) => o.setName('nowa_nazwa').setDescription('Nowa nazwa').setRequired(true).setMaxLength(90)),
     )
+    .addSubcommand((s) =>
+      s
+        .setName('przenies')
+        .setDescription('Przenieś ticket do innej kategorii')
+        .addStringOption((o) =>
+          o
+            .setName('kategoria')
+            .setDescription('Nowa kategoria')
+            .setRequired(true)
+            .addChoices(...config.ticketTypes.map((ty) => ({ name: `${ty.emoji ?? ''} ${ty.label}`.trim(), value: ty.id }))),
+        ),
+    )
+    .addSubcommand((s) => s.setName('prosba-zamkniecia').setDescription('Poproś autora o potwierdzenie, że sprawa jest rozwiązana'))
     .addSubcommand((s) => s.setName('info').setDescription('Informacje o tickecie')),
 
   async execute(interaction) {
@@ -111,6 +124,13 @@ module.exports = {
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });
         await t.setPriority(channel, interaction.options.getString('poziom'), member);
         return reply(interaction, 'Zmieniono priorytet.');
+      case 'przenies':
+        await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+        await t.moveTicket(channel, interaction.options.getString('kategoria'), member);
+        return reply(interaction, 'Ticket został przeniesiony.');
+      case 'prosba-zamkniecia':
+        await t.requestClose(channel, member);
+        return reply(interaction, 'Wysłano prośbę o zamknięcie do autora.');
       case 'nazwa': {
         const name = slug(interaction.options.getString('nowa_nazwa'), 90);
         await interaction.deferReply({ flags: MessageFlags.Ephemeral });

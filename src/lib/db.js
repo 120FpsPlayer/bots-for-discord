@@ -93,6 +93,20 @@ module.exports = {
     return g.counter;
   },
 
+  // --- panele (do automatycznego odświeżania statystyk) ---
+  panels: (guildId) => guild(guildId).panels ?? [],
+  addPanel(guildId, panel) {
+    const g = guild(guildId);
+    g.panels = [...(g.panels ?? []).filter((p) => p.messageId !== panel.messageId), panel].slice(-10);
+    save();
+  },
+  removePanel(guildId, messageId) {
+    const g = guild(guildId);
+    g.panels = (g.panels ?? []).filter((p) => p.messageId !== messageId);
+    save();
+  },
+  allGuildIds: () => Object.keys(state.guilds),
+
   // --- czarna lista ---
   isBlacklisted: (guildId, userId) => guild(guildId).blacklist.some((b) => b.userId === userId),
   blacklist: (guildId) => guild(guildId).blacklist,

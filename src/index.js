@@ -4,7 +4,7 @@ const config = require('./lib/config');
 const db = require('./lib/db');
 const loadCommands = require('./commands');
 const handleInteraction = require('./handlers/interactions');
-const { runInactivityCheck } = require('./lib/tickets');
+const { runInactivityCheck, refreshPanels } = require('./lib/tickets');
 const { isStaff } = require('./lib/utils');
 
 if (!process.env.DISCORD_TOKEN) {
@@ -36,11 +36,33 @@ client.once(Events.ClientReady, async (c) => {
     }
   }
 
-  c.user.setActivity({ name: `🎫 ${config.brand.name ?? 'Tickety'}`, type: ActivityType.Watching });
+  // rotujący status bota
+  let presenceIndex = 0;
+  const updatePresence = () => {
+    const open = db.tickets((x) => x.status === 'open').length;
+    const rated = db.tickets((x) => x.rating);
+    const avg = rated.length ? rated.reduce((a, x) => a + x.rating.stars, 0) / rated.length : null;
+    const statuses = [
+      { name: `🎫 ${open} ${open === 1 ? 'otwarty ticket' : 'otwartych ticketów'}`, type: ActivityType.Watching },
+      { name: `📨 ${config.brand.name ?? 'Support'} · /pomoc`, type: ActivityType.Listening },
+      ...(avg ? [{ name: `⭐ Ocena obsługi ${avg.toFixed(1)}/5`, type: ActivityType.Watching }] : []),
+    ];
+    c.user.setActivity(statuses[presenceIndex++ % statuses.length]);
+  };
+  updatePresence();
+  setInterval(updatePresence, 60_000);
 
   const tick = () => runInactivityCheck(c).catch((err) => console.error('[auto-close]', err));
   setTimeout(tick, 30_000);
   setInterval(tick, 5 * 60_000);
+
+  // odświeżanie paneli (statystyki, godziny pracy)
+  const panelMinutes = config.defaults.panelRefreshMinutes ?? 10;
+  if (panelMinutes > 0) {
+    const refresh = () => refreshPanels(c).catch((err) => console.error('[panel]', err));
+    setTimeout(refresh, 15_000);
+    setInterval(refresh, panelMinutes * 60_000);
+  }
 });
 
 client.on(Events.InteractionCreate, (interaction) => handleInteraction(interaction, commands));
@@ -54,6 +76,8 @@ client.on(Events.MessageCreate, (message) => {
   const fromStaff = message.author.id !== ticket.ownerId && isStaff(message.member, config.getType(ticket.typeId));
   const patch = { lastActivity: Date.now(), lastMessageBy: fromStaff ? 'staff' : 'owner', warned: false };
   if (fromStaff && !ticket.firstResponseAt) patch.firstResponseAt = Date.now();
+  // odpowiedź autora anuluje oczekującą prośbę o zamknięcie
+  if (!fromStaff && ticket.closeRequest) patch.closeRequest = null;
   db.updateTicket(message.channel.id, patch);
 });
 

@@ -2,13 +2,38 @@
   "brand": {
     "name": "Support",
     "color": "#5865F2",
-    "footer": "System ticketów"
+    "footer": "System ticketów",
+    "logo": null
   },
   "panel": {
     "title": "🎫 Centrum pomocy",
-    "description": "Potrzebujesz pomocy? Wybierz kategorię z listy poniżej, a otworzymy dla Ciebie prywatny kanał z naszym zespołem.\n\n**Zanim otworzysz ticket:**\n• Opisz problem jak najdokładniej\n• Nie pinguj administracji\n• Jeden problem = jeden ticket",
-    "image": null
+    "description": "Masz pytanie, problem albo chcesz coś zgłosić? Wybierz odpowiednią kategorię poniżej – otworzymy dla Ciebie **prywatny kanał**, który widzisz tylko Ty i nasz zespół.",
+    "rules": [
+      "Opisz sprawę jak najdokładniej – przyspieszy to pomoc",
+      "Nie oznaczaj administracji – powiadomimy ją automatycznie",
+      "Jeden problem = jeden ticket",
+      "Tickety bez odpowiedzi są zamykane automatycznie"
+    ],
+    "image": null,
+    "buttonLabel": "Otwórz",
+    "showStats": true
   },
+  "workingHours": {
+    "enabled": true,
+    "timezone": "Europe/Warsaw",
+    "days": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      0
+    ],
+    "from": "10:00",
+    "to": "22:00"
+  },
+  "channelNameFormat": "{prio}{prefix}-{number}",
   "ticketTypes": [
     {
       "id": "support",
@@ -18,8 +43,22 @@
       "channelPrefix": "pomoc",
       "staffRoleIds": [],
       "questions": [
-        { "id": "subject", "label": "Temat", "style": "short", "placeholder": "Np. nie działa mi ranga", "required": true, "maxLength": 100 },
-        { "id": "details", "label": "Opisz dokładnie problem", "style": "paragraph", "placeholder": "Co się stało, kiedy, co już próbowałeś?", "required": true, "maxLength": 1000 }
+        {
+          "id": "subject",
+          "label": "Temat",
+          "style": "short",
+          "placeholder": "Np. nie działa mi ranga",
+          "required": true,
+          "maxLength": 100
+        },
+        {
+          "id": "details",
+          "label": "Opisz dokładnie problem",
+          "style": "paragraph",
+          "placeholder": "Co się stało, kiedy, co już próbowałeś?",
+          "required": true,
+          "maxLength": 1000
+        }
       ]
     },
     {
@@ -30,9 +69,27 @@
       "channelPrefix": "zgloszenie",
       "staffRoleIds": [],
       "questions": [
-        { "id": "who", "label": "Kogo zgłaszasz? (nick / ID)", "style": "short", "required": true, "maxLength": 100 },
-        { "id": "what", "label": "Co się stało?", "style": "paragraph", "required": true, "maxLength": 1000 },
-        { "id": "proof", "label": "Dowody (linki do screenów)", "style": "paragraph", "required": false, "maxLength": 500 }
+        {
+          "id": "who",
+          "label": "Kogo zgłaszasz? (nick / ID)",
+          "style": "short",
+          "required": true,
+          "maxLength": 100
+        },
+        {
+          "id": "what",
+          "label": "Co się stało?",
+          "style": "paragraph",
+          "required": true,
+          "maxLength": 1000
+        },
+        {
+          "id": "proof",
+          "label": "Dowody (linki do screenów)",
+          "style": "paragraph",
+          "required": false,
+          "maxLength": 500
+        }
       ]
     },
     {
@@ -43,7 +100,13 @@
       "channelPrefix": "wspolpraca",
       "staffRoleIds": [],
       "questions": [
-        { "id": "offer", "label": "Twoja propozycja", "style": "paragraph", "required": true, "maxLength": 1000 }
+        {
+          "id": "offer",
+          "label": "Twoja propozycja",
+          "style": "paragraph",
+          "required": true,
+          "maxLength": 1000
+        }
       ]
     },
     {
@@ -54,9 +117,48 @@
       "channelPrefix": "odwolanie",
       "staffRoleIds": [],
       "questions": [
-        { "id": "punishment", "label": "Jaką karę otrzymałeś i kiedy?", "style": "short", "required": true, "maxLength": 150 },
-        { "id": "why", "label": "Dlaczego kara powinna zostać zdjęta?", "style": "paragraph", "required": true, "maxLength": 1000 }
+        {
+          "id": "punishment",
+          "label": "Jaką karę otrzymałeś i kiedy?",
+          "style": "short",
+          "required": true,
+          "maxLength": 150
+        },
+        {
+          "id": "why",
+          "label": "Dlaczego kara powinna zostać zdjęta?",
+          "style": "paragraph",
+          "required": true,
+          "maxLength": 1000
+        }
       ]
+    }
+  ],
+  "snippets": [
+    {
+      "id": "powitanie",
+      "name": "👋 Powitanie",
+      "content": "Cześć {user}! Nazywam się {staff} i zajmę się Twoim zgłoszeniem. Daj mi chwilkę na zapoznanie się ze sprawą."
+    },
+    {
+      "id": "szczegoly",
+      "name": "🔍 Prośba o szczegóły",
+      "content": "{user}, potrzebujemy więcej informacji. Opisz proszę dokładnie, co się stało, i jeśli możesz – dołącz zrzuty ekranu."
+    },
+    {
+      "id": "czekaj",
+      "name": "⏳ Proszę czekać",
+      "content": "Przekazałem sprawę dalej, {user}. Odezwiemy się najszybciej, jak to możliwe – dziękujemy za cierpliwość!"
+    },
+    {
+      "id": "rozwiazane",
+      "name": "✅ Rozwiązane",
+      "content": "Wygląda na to, że sprawa została rozwiązana 🎉 Jeśli potrzebujesz czegoś jeszcze, napisz – w przeciwnym razie zamkniemy ticket."
+    },
+    {
+      "id": "regulamin",
+      "name": "📜 Regulamin",
+      "content": "{user}, przypominamy o zapoznaniu się z regulaminem serwera **{server}**. Dziękujemy!"
     }
   ],
   "defaults": {
@@ -65,6 +167,11 @@
     "autoCloseWarningHours": 24,
     "deleteDelaySeconds": 5,
     "dmTranscript": true,
-    "askForRating": true
+    "askForRating": true,
+    "openCooldownSeconds": 60,
+    "dmOnOpen": true,
+    "pingStaffCooldownMinutes": 30,
+    "pingStaffAfterMinutes": 10,
+    "panelRefreshMinutes": 10
   }
 }

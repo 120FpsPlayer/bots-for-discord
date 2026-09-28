@@ -30,12 +30,10 @@ const fail = (description) => embed(COLORS.danger).setDescription(`❌ ${descrip
 
 /** Odpowiada na interakcję niezależnie od tego, czy była już potwierdzona. */
 async function reply(interaction, payload, ephemeral = true) {
-  const data = typeof payload === 'string' ? { embeds: [ok(payload)] } : payload;
-  if (ephemeral) data.flags = MessageFlags.Ephemeral;
-  if (interaction.deferred || interaction.replied) {
-    if (interaction.deferred && !interaction.replied) return interaction.editReply(data);
-    return interaction.followUp(data);
-  }
+  const data = typeof payload === 'string' ? { embeds: [ok(payload)] } : { ...payload };
+  if (interaction.deferred && !interaction.replied) return interaction.editReply(data);
+  if (ephemeral) data.flags = (data.flags ?? 0) | MessageFlags.Ephemeral;
+  if (interaction.replied) return interaction.followUp(data);
   return interaction.reply(data);
 }
 
@@ -87,10 +85,64 @@ function slug(text, max = 20) {
   );
 }
 
+const pad = (n) => String(n).padStart(4, '0');
+
 function channelName(ticket, type) {
   const prio = ticket.priority && ticket.priority !== 'normal' ? PRIORITIES[ticket.priority].emoji : '';
-  const num = String(ticket.number).padStart(4, '0');
-  return `${prio}${type?.channelPrefix ?? 'ticket'}-${num}`;
+  return (
+    config.channelNameFormat
+      .replace('{prio}', prio)
+      .replace('{prefix}', type?.channelPrefix ?? 'ticket')
+      .replace('{number}', pad(ticket.number))
+      .replace('{user}', slug(ticket.ownerName ?? 'user', 16))
+      .slice(0, 100) || `ticket-${pad(ticket.number)}`
+  );
+}
+
+/** Czy support jest teraz w godzinach pracy? Zwraca { open, text }. */
+function workingStatus(now = new Date()) {
+  const wh = config.workingHours;
+  if (!wh?.enabled) return { open: true, text: null };
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: wh.timezone ?? 'Europe/Warsaw',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(now)
+      .map((p) => [p.type, p.value]),
+  );
+  const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(parts.weekday);
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  const toMin = (s) => Number(s.split(':')[0]) * 60 + Number(s.split(':')[1] ?? 0);
+  const from = toMin(wh.from ?? '00:00');
+  const to = toMin(wh.to ?? '23:59');
+  const inHours = from <= to ? minutes >= from && minutes < to : minutes >= from || minutes < to;
+  const open = (wh.days ?? [0, 1, 2, 3, 4, 5, 6]).includes(day) && inHours;
+  return {
+    open,
+    text: open
+      ? `🟢 Support jest teraz dostępny (${wh.from}–${wh.to})`
+      : `🌙 Jesteśmy poza godzinami pracy (${wh.from}–${wh.to}) – odpowiemy najszybciej, jak to możliwe`,
+  };
+}
+
+/** Średni czas pierwszej odpowiedzi z ostatnich 30 dni. */
+function avgResponseTime(guildId) {
+  const since = Date.now() - 30 * 86_400_000;
+  const times = db
+    .tickets((t) => t.guildId === guildId && t.firstResponseAt && t.createdAt >= since)
+    .map((t) => t.firstResponseAt - t.createdAt);
+  return times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
+}
+
+/** Ustandaryzowany embed do logów. */
+function logEmbed(color, title, user) {
+  const e = embed(color).setTitle(title);
+  if (user) e.setAuthor({ name: user.tag ?? user.username ?? 'Użytkownik', iconURL: user.displayAvatarURL?.() });
+  return e;
 }
 
 function duration(ms) {
@@ -129,6 +181,10 @@ module.exports = {
   safeRename,
   slug,
   channelName,
+  pad,
+  workingStatus,
+  avgResponseTime,
+  logEmbed,
   duration,
   ts,
   sendLog,

@@ -4,24 +4,37 @@ Kompletny bot do obsługi zgłoszeń napisany w **discord.js v14**. Cały interf
 
 ## ✨ Funkcje
 
-| | |
-|---|---|
-| 📂 **Kategorie ticketów** | Dowolna liczba typów (do 25) – każdy z własnym emoji, prefiksem kanału i rolami supportu |
-| 📝 **Formularze** | Przed otwarciem ticketu użytkownik wypełnia formularz (do 5 pytań na typ) – odpowiedzi trafiają do ticketu |
-| 🎛️ **Panel** | Przyciski lub lista rozwijana – do wyboru przy `/panel` |
-| 🙋 **Przejmowanie** | Support „przejmuje" ticket – widać, kto się nim zajmuje |
-| 🚦 **Priorytety** | Niski / Normalny / Wysoki / Pilny – z emoji w nazwie kanału i kolorem embeda |
-| 📄 **Transkrypty HTML** | Wygląd jak na Discordzie (avatary, embedy, załączniki, formatowanie) – na kanał transkryptów i w DM do autora |
-| ⭐ **Oceny obsługi** | Po zamknięciu autor dostaje w DM prośbę o ocenę 1–5 ⭐ z opcjonalnym komentarzem |
-| ⏰ **Inteligentne auto-zamykanie** | Zamyka tylko tickety, w których **support odpisał, a autor milczy** – nigdy te czekające na odpowiedź zespołu. Najpierw ostrzeżenie |
-| 🔓 **Ponowne otwieranie** | Zamknięty ticket można przywrócić jednym kliknięciem |
-| 👥 **Dodawanie osób** | `/ticket dodaj` / `/ticket usun` |
-| ⛔ **Czarna lista** | Blokada tworzenia ticketów dla wybranych osób (z powodem) |
-| 🔢 **Limit ticketów** | Maksymalna liczba otwartych ticketów na osobę |
-| 📊 **Statystyki** | Liczby, średnia ocena, średni czas 1. odpowiedzi i rozwiązania, ranking supportu |
-| 🧾 **Logi** | Każda akcja (otwarcie, przejęcie, zamknięcie, ocena, usunięcie) na kanale logów |
-| ⚡ **Szybki setup** | `/setup auto` tworzy wszystkie kategorie i kanały za Ciebie |
-| 🛡️ **Odporność** | Ochrona przed podwójnym kliknięciem, pilnowanie limitów zmian nazw kanałów Discorda, atomowy zapis danych |
+### 🎨 Wygląd
+- **Nowoczesne karty Discorda (Components V2):** kolorowe kontenery, sekcje z miniaturkami, separatory. Bez starych embedów.
+- **Panel ticketów:** baner, logo serwera, zasady, osobna karta z przyciskiem dla każdej kategorii (albo lista rozwijana).
+- **Panel na żywo:** pokazuje 🟢/🌙 godziny pracy supportu, ⏱️ średni czas odpowiedzi i 📨 liczbę otwartych ticketów. Odświeża się automatycznie.
+- **Karta ticketu:** avatar autora, formularz, status, priorytet, kto obsługuje, dodane osoby, wiek konta, data dołączenia i liczba poprzednich ticketów. Kolor paska zależy od priorytetu.
+- **Karta zamknięcia:** czas trwania, czas pierwszej odpowiedzi, kto obsługiwał, liczba wiadomości i przycisk pobrania transkryptu.
+- **Transkrypt HTML jak Discord:** statystyki na górze, formularz, separatory dni, grupowanie wiadomości, odpowiedzi (↪), plakietki AUTOR / SUPPORT / BOT, naklejki, znacznik „edytowano”, karty bota.
+
+### 🎧 Dla supportu
+- **Menu zarządzania w karcie:** zmiana priorytetu, prośba o zamknięcie, przeniesienie do innej kategorii.
+- **Dodawanie osób** prosto z listy użytkowników w karcie (do 5 naraz).
+- **Przejmowanie ticketów** z kartą „🙋 X zajmie się Twoim zgłoszeniem”.
+- **Prośba o zamknięcie:** autor klika „✅ Tak, zamknij” albo „✋ Nie, potrzebuję pomocy”.
+- **Gotowe odpowiedzi** `/odpowiedz` z podpowiadaniem i zmiennymi `{user}`, `{staff}`, `{server}`.
+- **Przenoszenie ticketów** między kategoriami. Uprawnienia ról zmieniają się automatycznie, a nowy zespół jest oznaczany.
+- **Statystyki:** średnia ocena, rozkład ocen, czas 1. odpowiedzi i rozwiązania, podział na kategorie, trend tygodniowy, ranking 🥇🥈🥉.
+
+### 👤 Dla użytkowników
+- **Formularz przed otwarciem** (do 5 pytań na kategorię).
+- **DM po otwarciu ticketu** z przyciskiem „Przejdź do ticketu”.
+- **🔔 Wezwij support:** gdy długo nikt nie odpisuje (z cooldownem, żeby nie było spamu).
+- **Ocena obsługi** 1–5 ⭐ w DM z opcjonalnym komentarzem i transkryptem w załączniku.
+- **„✋ Nadal potrzebuję pomocy”:** przycisk anulujący automatyczne zamknięcie.
+
+### 🛡️ Bezpieczeństwo i porządek
+- **Inteligentne auto-zamykanie:** zamyka tylko tickety, w których support odpisał, a autor milczy. Najpierw wysyła ostrzeżenie.
+- **Anty-spam:** cooldown między ticketami, limit otwartych ticketów, czarna lista.
+- **Role w `.env`:** właściciele, admini, support (także per kategoria), kto może otwierać tickety, zablokowane role.
+- **Logi z avatarami** i przyciskami do kanału i transkryptu.
+- **Rotujący status bota:** liczba otwartych ticketów i średnia ocena.
+- **Odporność:** ochrona przed podwójnym kliknięciem, pilnowanie limitów zmian nazw kanałów, atomowy zapis danych.
 
 ## 🚀 Instalacja
 
@@ -109,40 +122,70 @@ Role supportu możesz też dodawać komendą `/setup rola-dodaj` – oba źród�
 | `/ticket przejmij` / `odpusc` | Przejmuje / oddaje ticket | Support |
 | `/ticket priorytet` | Zmienia priorytet | Support |
 | `/ticket nazwa` | Zmienia nazwę kanału | Support |
+| `/ticket przenies` | Przenosi ticket do innej kategorii | Support |
+| `/ticket prosba-zamkniecia` | Prosi autora o potwierdzenie rozwiązania | Support |
+| `/odpowiedz` | Wysyła gotową odpowiedź (z podpowiadaniem) | Support |
 | `/blacklist dodaj` / `usun` / `lista` | Czarna lista | Support |
+| `/pomoc` | Lista komend dostosowana do Twoich uprawnień | Wszyscy |
 | `/statystyki [pracownik] [dni]` | Statystyki i ranking | Support |
 
-Przyciski w tickecie: **🔒 Zamknij** (z potwierdzeniem i opcjonalnym powodem), **🙋 Przejmij / ↩️ Odpuść**, **📄 Transkrypt**, a po zamknięciu **🔓 Otwórz ponownie** i **🗑️ Usuń**.
+W karcie ticketu:
+- **Przyciski:** 🔒 Zamknij (z potwierdzeniem i opcjonalnym powodem), 🙋 Przejmij / ↩️ Odpuść, 🔔 Wezwij support, 📄 Transkrypt.
+- **⚙️ Menu supportu:** priorytet, prośba o zamknięcie, przeniesienie.
+- **➕ Lista „Dodaj osobę”.**
+
+Po zamknięciu pojawiają się 🔓 Otwórz ponownie, 📄 Transkrypt, 🗑️ Usuń i ⬇️ Pobierz.
 
 ## ⚙️ Dostosowanie – `config.json`
 
 ```jsonc
 {
-  "brand": { "name": "Support", "color": "#5865F2", "footer": "System ticketów" },
-  "panel": { "title": "…", "description": "…", "image": null },
+  "brand": { "name": "Support", "color": "#5865F2", "footer": "System ticketów", "logo": null },
+  "panel": {
+    "title": "🎫 Centrum pomocy",
+    "description": "…",
+    "rules": ["Opisz sprawę dokładnie", "…"],   // lista „Zanim otworzysz ticket"
+    "image": null,                                // link do banera (np. https://…/banner.png)
+    "buttonLabel": "Otwórz",
+    "showStats": true                             // średni czas odpowiedzi + liczba ticketów
+  },
+  "workingHours": {                               // status 🟢/🌙 na panelu i w tickecie
+    "enabled": true, "timezone": "Europe/Warsaw",
+    "days": [1, 2, 3, 4, 5, 6, 0],                // 0 = niedziela
+    "from": "10:00", "to": "22:00"
+  },
+  "channelNameFormat": "{prio}{prefix}-{number}", // dostępne też {user}
   "ticketTypes": [
     {
-      "id": "support",              // unikalne, a-z 0-9 _ -
-      "label": "Pomoc ogólna",
-      "emoji": "🛠️",
+      "id": "support", "label": "Pomoc ogólna", "emoji": "🛠️",
       "description": "Pytania i problemy techniczne",
-      "channelPrefix": "pomoc",     // kanał: pomoc-0001
-      "staffRoleIds": [],           // dodatkowe role tylko dla tego typu
-      "questions": [                // max 5; pusta lista = bez formularza
+      "channelPrefix": "pomoc",
+      "staffRoleIds": [],
+      "questions": [
         { "id": "subject", "label": "Temat", "style": "short", "required": true, "maxLength": 100 }
       ]
     }
   ],
+  "snippets": [                                   // gotowe odpowiedzi dla /odpowiedz
+    { "id": "powitanie", "name": "👋 Powitanie", "content": "Cześć {user}! Nazywam się {staff}…" }
+  ],
   "defaults": {
     "maxOpenTicketsPerUser": 2,
-    "autoCloseHours": 48,           // 0 = wyłączone
+    "autoCloseHours": 48,             // 0 = wyłączone
     "autoCloseWarningHours": 24,
     "deleteDelaySeconds": 5,
-    "dmTranscript": true,           // wysyłaj transkrypt autorowi w DM
-    "askForRating": true            // proś o ocenę po zamknięciu
+    "dmTranscript": true,
+    "askForRating": true,
+    "dmOnOpen": true,                 // DM z linkiem po otwarciu ticketu
+    "openCooldownSeconds": 60,        // anty-spam między ticketami
+    "pingStaffAfterMinutes": 10,      // po ilu minutach można „wezwać support"
+    "pingStaffCooldownMinutes": 30,
+    "panelRefreshMinutes": 10         // odświeżanie statystyk na panelu
   }
 }
 ```
+
+> Tryb kart z przyciskami mieści do **8 kategorii**. Przy większej liczbie panel sam przełącza się na listę rozwijaną.
 
 Po zmianie `config.json` zrestartuj bota i wyślij panel ponownie (`/panel`). `npm run check` sprawdzi poprawność konfiguracji bez łączenia z Discordem.
 
@@ -153,10 +196,11 @@ index.js                  # plik startowy (dla hostingu)
 src/
 ├── index.js              # start bota, zdarzenia (uruchamiany przez /index.js)
 ├── deploy-commands.js    # rejestracja komend
-├── commands/             # /setup, /panel, /ticket, /blacklist, /statystyki
+├── commands/             # /setup, /panel, /ticket, /odpowiedz, /blacklist, /statystyki, /pomoc
 ├── handlers/interactions.js  # przyciski, listy, formularze
 └── lib/
     ├── tickets.js        # logika ticketów
+    ├── ui.js             # wygląd kart (Components V2)
     ├── transcript.js     # generator transkryptów HTML
     ├── db.js             # baza JSON (data/db.json)
     ├── config.js         # wczytanie i walidacja config.json

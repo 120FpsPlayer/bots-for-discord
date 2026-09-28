@@ -4,23 +4,25 @@ const {
   ButtonStyle,
   ChannelType,
   ModalBuilder,
-  StringSelectMenuBuilder,
   TextInputBuilder,
   TextInputStyle,
 } = require('discord.js');
 const config = require('./config');
 const db = require('./db');
+const ui = require('./ui');
 const { createTranscript } = require('./transcript');
 const { openDeniedReason } = require('./permissions');
 const {
   COLORS,
   PRIORITIES,
   embed,
+  logEmbed,
   staffRoleIds,
   isAdmin,
   safeRename,
   channelName,
   duration,
+  pad,
   ts,
   sendLog,
 } = require('./utils');
@@ -34,54 +36,33 @@ const BOT_PERMS = [...STAFF_PERMS, 'ManageChannels'];
 const allow = (perms) => Object.fromEntries(perms.map((p) => [p, true]));
 
 const creating = new Set(); // blokada podwójnego kliknięcia
+const lastOpened = new Map(); // anty-spam: guildId:userId -> timestamp
 
-const button = (id, label, emoji, style) =>
-  new ButtonBuilder().setCustomId(id).setLabel(label).setEmoji(emoji).setStyle(style);
+const D = config.defaults;
 
 // ───────────────────────────── panel ─────────────────────────────
 
-function buildPanel(style = 'buttons') {
-  const e = embed(COLORS.brand)
-    .setTitle(config.panel.title)
-    .setDescription(
-      `${config.panel.description}\n\n` +
-        config.ticketTypes.map((t) => `${t.emoji ?? '🎫'} **${t.label}**${t.description ? ` — ${t.description}` : ''}`).join('\n'),
-    );
-  if (config.panel.image) e.setImage(config.panel.image);
-  if (config.brand.name) e.setAuthor({ name: config.brand.name });
+const buildPanel = (guild, style) => ui.panelPayload(guild, style);
 
-  const rows = [];
-  if (style === 'select') {
-    rows.push(
-      new ActionRowBuilder().addComponents(
-        new StringSelectMenuBuilder()
-          .setCustomId('ticket:open')
-          .setPlaceholder('📂 Wybierz kategorię zgłoszenia…')
-          .addOptions(
-            config.ticketTypes.map((t) => ({
-              label: t.label,
-              value: t.id,
-              description: t.description?.slice(0, 100),
-              emoji: t.emoji,
-            })),
-          ),
-      ),
-    );
-  } else {
-    const buttons = config.ticketTypes.map((t) =>
-      new ButtonBuilder()
-        .setCustomId(`ticket:open:${t.id}`)
-        .setLabel(t.label)
-        .setEmoji(t.emoji ?? '🎫')
-        .setStyle(ButtonStyle.Secondary),
-    );
-    for (let i = 0; i < buttons.length; i += 5) rows.push(new ActionRowBuilder().addComponents(buttons.slice(i, i + 5)));
+/** Odświeża statystyki i status godzin pracy na wszystkich zapisanych panelach. */
+async function refreshPanels(client) {
+  for (const guildId of db.allGuildIds()) {
+    const guild = client.guilds.cache.get(guildId);
+    if (!guild) continue;
+    for (const panel of db.panels(guildId)) {
+      const channel = guild.channels.cache.get(panel.channelId);
+      const message = channel && (await channel.messages.fetch(panel.messageId).catch((e) => (e.code === 10008 ? null : undefined)));
+      if (message === null || !channel) {
+        db.removePanel(guildId, panel.messageId);
+        continue;
+      }
+      if (message) await message.edit(buildPanel(guild, panel.style)).catch(() => null);
+    }
   }
-  return { embeds: [e], components: rows };
 }
 
 function buildForm(type, origin) {
-  const modal = new ModalBuilder().setCustomId(`ticket:form:${type.id}:${origin}`).setTitle(`${type.label}`.slice(0, 45));
+  const modal = new ModalBuilder().setCustomId(`ticket:form:${type.id}:${origin}`).setTitle(`${type.emoji ?? ''} ${type.label}`.trim().slice(0, 45));
   for (const q of type.questions) {
     const input = new TextInputBuilder()
       .setCustomId(q.id)
@@ -102,7 +83,7 @@ function checkCanOpen(member) {
   const settings = db.settings(member.guild.id);
   const category = member.guild.channels.cache.get(settings.categoryId);
   if (!category || category.type !== ChannelType.GuildCategory) {
-    return 'System ticketów nie jest jeszcze skonfigurowany. Administrator musi użyć komendy `/setup ustaw`.';
+    return 'System ticketów nie jest jeszcze skonfigurowany. Administrator musi użyć komendy `/setup auto` lub `/setup ustaw`.';
   }
   const roleError = openDeniedReason(member);
   if (roleError) return roleError;
@@ -112,50 +93,35 @@ function checkCanOpen(member) {
   }
   const open = db.tickets((t) => t.guildId === member.guild.id && t.ownerId === member.id && t.status === 'open');
   if (settings.maxOpenTicketsPerUser > 0 && open.length >= settings.maxOpenTicketsPerUser) {
-    return `Osiągnięto limit otwartych ticketów (**${settings.maxOpenTicketsPerUser}**). Twoje tickety: ${open
+    return `Osiągnięto limit otwartych ticketów (**${settings.maxOpenTicketsPerUser}**).\nTwoje tickety: ${open
       .map((t) => `<#${t.channelId}>`)
       .join(', ')}`;
+  }
+  const cooldown = (D.openCooldownSeconds ?? 0) * 1000;
+  const last = lastOpened.get(`${member.guild.id}:${member.id}`);
+  if (cooldown && last && Date.now() - last < cooldown && !isAdmin(member)) {
+    return `Zwolnij trochę! Kolejny ticket możesz otworzyć ${ts(last + cooldown, 'R')}.`;
   }
   return null;
 }
 
-function ticketEmbed(ticket, type) {
-  const prio = PRIORITIES[ticket.priority] ?? PRIORITIES.normal;
-  const e = embed(prio.color)
-    .setTitle(`${type?.emoji ?? '🎫'} ${type?.label ?? 'Ticket'} · #${String(ticket.number).padStart(4, '0')}`)
-    .setDescription(
-      `Witaj <@${ticket.ownerId}>! 👋\nZespół odpowie najszybciej, jak to możliwe. ` +
-        'W międzyczasie możesz dopisać szczegóły lub dodać zrzuty ekranu.\n\n' +
-        'Aby zamknąć zgłoszenie, kliknij **🔒 Zamknij**.',
-    )
-    .addFields(
-      { name: '👤 Autor', value: `<@${ticket.ownerId}>`, inline: true },
-      { name: `${prio.emoji} Priorytet`, value: prio.label, inline: true },
-      { name: '🙋 Przejęty przez', value: ticket.claimedBy ? `<@${ticket.claimedBy}>` : '—', inline: true },
-    );
-  for (const a of ticket.answers ?? []) {
-    e.addFields({ name: a.label, value: (a.value || '—').slice(0, 1024) });
-  }
-  return e;
-}
-
-function controlRow(ticket) {
-  return new ActionRowBuilder().addComponents(
-    button('ticket:close', 'Zamknij', '🔒', ButtonStyle.Danger),
-    ticket.claimedBy
-      ? button('ticket:unclaim', 'Odpuść', '↩️', ButtonStyle.Secondary)
-      : button('ticket:claim', 'Przejmij', '🙋', ButtonStyle.Success),
-    button('ticket:transcript', 'Transkrypt', '📄', ButtonStyle.Secondary),
-  );
+/** Buduje przypiętą kartę ticketu z aktualnymi danymi. */
+async function renderCard(guild, ticket, pingRoles = []) {
+  const ownerUser = await guild.client.users.fetch(ticket.ownerId).catch(() => null);
+  const ownerMember = await guild.members.fetch(ticket.ownerId).catch(() => null);
+  const previousCount = db.tickets(
+    (t) => t.guildId === guild.id && t.ownerId === ticket.ownerId && t.channelId !== ticket.channelId,
+  ).length;
+  return ui.ticketCard(ticket, config.getType(ticket.typeId), { ownerUser, ownerMember, pingRoles, previousCount });
 }
 
 async function refreshControlMessage(channel, ticket) {
   if (!ticket.controlMessageId) return;
   const msg = await channel.messages.fetch(ticket.controlMessageId).catch(() => null);
   if (!msg) return;
-  await msg
-    .edit({ embeds: [ticketEmbed(ticket, config.getType(ticket.typeId))], components: [controlRow(ticket)] })
-    .catch(() => null);
+  const payload = await renderCard(channel.guild, ticket);
+  delete payload.allowedMentions; // edycja i tak nikogo nie oznacza
+  await msg.edit(payload).catch((err) => console.warn('[karta] Nie udało się odświeżyć:', err.message));
 }
 
 async function openTicket(member, type, answers = []) {
@@ -171,13 +137,13 @@ async function openTicket(member, type, answers = []) {
     const settings = db.settings(guild.id);
     const staffRoles = staffRoleIds(guild.id, type).filter((id) => guild.roles.cache.has(id));
     const number = db.nextTicketNumber(guild.id);
-    const draft = { number, priority: 'normal' };
+    const draft = { number, priority: 'normal', ownerName: member.user.username };
 
     const channel = await guild.channels.create({
       name: channelName(draft, type),
       type: ChannelType.GuildText,
       parent: settings.categoryId,
-      topic: `Ticket #${number} · ${type.label} · ${member.user.tag} (${member.id})`,
+      topic: `${type.emoji ?? '🎫'} ${type.label} · #${pad(number)} · ${member.user.tag} (${member.id})`,
       permissionOverwrites: [
         { id: guild.roles.everyone.id, deny: ['ViewChannel'] },
         { id: guild.members.me.id, allow: BOT_PERMS },
@@ -188,12 +154,14 @@ async function openTicket(member, type, answers = []) {
     });
 
     const now = Date.now();
+    lastOpened.set(key, now);
     const ticket = db.createTicket({
       channelId: channel.id,
       guildId: guild.id,
       number,
       typeId: type.id,
       ownerId: member.id,
+      ownerName: member.user.username,
       status: 'open',
       priority: 'normal',
       claimedBy: null,
@@ -204,6 +172,8 @@ async function openTicket(member, type, answers = []) {
       lastMessageBy: 'owner',
       firstResponseAt: null,
       warned: false,
+      lastStaffPing: null,
+      closeRequest: null,
       closedAt: null,
       closedBy: null,
       closeReason: null,
@@ -212,25 +182,47 @@ async function openTicket(member, type, answers = []) {
       controlMessageId: null,
     });
 
-    const pings = settings.pingStaffOnOpen ? staffRoles.map((id) => `<@&${id}>`).join(' ') : '';
-    const msg = await channel.send({
-      content: `${member} ${pings}`.trim(),
-      embeds: [ticketEmbed(ticket, type)],
-      components: [controlRow(ticket)],
-      allowedMentions: { users: [member.id], roles: settings.pingStaffOnOpen ? staffRoles : [] },
-    });
+    const pings = settings.pingStaffOnOpen ? staffRoles : [];
+    const msg = await channel.send(await renderCard(guild, ticket, pings));
     db.updateTicket(channel.id, { controlMessageId: msg.id });
     await msg.pin().catch(() => null);
 
+    if (D.dmOnOpen) {
+      await member
+        .send({
+          embeds: [
+            embed(COLORS.success)
+              .setAuthor({ name: guild.name, iconURL: guild.iconURL() ?? undefined })
+              .setTitle(`${type.emoji ?? '🎫'} Twój ticket został utworzony`)
+              .setDescription(
+                `**Kategoria:** ${type.label}\n**Numer:** \`#${pad(number)}\`\n\n` +
+                  'Zespół odpowie najszybciej, jak to możliwe. Powiadomimy Cię, gdy ticket zostanie zamknięty.',
+              ),
+          ],
+          components: [
+            new ActionRowBuilder().addComponents(
+              new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(channel.url).setLabel('Przejdź do ticketu').setEmoji('🎫'),
+            ),
+          ],
+        })
+        .catch(() => null);
+    }
+
     await sendLog(guild, {
       embeds: [
-        embed(COLORS.success)
-          .setTitle('📥 Otwarto ticket')
+        logEmbed(COLORS.success, '📥 Otwarto ticket', member.user)
+          .setThumbnail(member.user.displayAvatarURL())
           .addFields(
-            { name: 'Ticket', value: `${channel} (#${number})`, inline: true },
-            { name: 'Typ', value: `${type.emoji ?? ''} ${type.label}`, inline: true },
-            { name: 'Autor', value: `${member} \`${member.id}\``, inline: true },
+            { name: 'Ticket', value: `${channel}\n\`#${pad(number)}\``, inline: true },
+            { name: 'Kategoria', value: `${type.emoji ?? ''} ${type.label}`, inline: true },
+            { name: 'Autor', value: `${member}\n\`${member.id}\``, inline: true },
+            ...answers.slice(0, 3).map((a) => ({ name: a.label, value: (a.value || '—').slice(0, 300) })),
           ),
+      ],
+      components: [
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(channel.url).setLabel('Przejdź').setEmoji('🎫'),
+        ),
       ],
     });
 
@@ -246,38 +238,40 @@ async function archiveTranscript(channel, ticket, actor) {
   const type = config.getType(ticket.typeId);
   const { attachment, messageCount, participants } = await createTranscript(channel, ticket, type);
   const settings = db.settings(channel.guild.id);
+  const owner = await channel.client.users.fetch(ticket.ownerId).catch(() => null);
 
-  const summary = embed(COLORS.info)
-    .setTitle(`📄 Transkrypt · ${channel.name}`)
+  const summary = logEmbed(COLORS.info, `📄 Transkrypt · #${channel.name}`, owner)
     .addFields(
       { name: 'Autor', value: `<@${ticket.ownerId}>`, inline: true },
-      { name: 'Typ', value: type?.label ?? ticket.typeId, inline: true },
-      { name: 'Przejęty przez', value: ticket.claimedBy ? `<@${ticket.claimedBy}>` : '—', inline: true },
-      { name: 'Zamknięty przez', value: actor ? `<@${actor.id}>` : '—', inline: true },
+      { name: 'Kategoria', value: `${type?.emoji ?? ''} ${type?.label ?? ticket.typeId}`, inline: true },
+      { name: 'Obsługiwał', value: ticket.claimedBy ? `<@${ticket.claimedBy}>` : '—', inline: true },
+      { name: 'Zamknął', value: actor ? `<@${actor.id}>` : '—', inline: true },
       { name: 'Czas trwania', value: duration(Date.now() - ticket.createdAt), inline: true },
-      { name: 'Wiadomości', value: `${messageCount} (uczestników: ${participants.size})`, inline: true },
+      { name: 'Wiadomości', value: `${messageCount} · ${participants.size} os.`, inline: true },
     );
   if (ticket.closeReason) summary.addFields({ name: 'Powód zamknięcia', value: ticket.closeReason.slice(0, 1024) });
 
+  let url = null;
   const target = settings.transcriptChannelId
     ? await channel.guild.channels.fetch(settings.transcriptChannelId).catch(() => null)
     : null;
   if (target?.isTextBased()) {
     const sent = await target.send({ embeds: [summary], files: [attachment] }).catch(() => null);
-    const url = sent?.attachments.first()?.url;
+    url = sent?.attachments.first()?.url ?? null;
     if (url) db.updateTicket(channel.id, { transcriptUrl: url });
   }
-  return { attachment, summary };
+  return { attachment, messageCount, url };
 }
 
 // ───────────────────────────── zamykanie ─────────────────────────────
 
 function ratingRow(channelId) {
+  const labels = ['Słabo', 'Tak sobie', 'OK', 'Dobrze', 'Świetnie'];
   return new ActionRowBuilder().addComponents(
     [1, 2, 3, 4, 5].map((n) =>
       new ButtonBuilder()
         .setCustomId(`rate:${channelId}:${n}`)
-        .setLabel(String(n))
+        .setLabel(`${n} · ${labels[n - 1]}`)
         .setEmoji('⭐')
         .setStyle(n >= 4 ? ButtonStyle.Success : n === 3 ? ButtonStyle.Primary : ButtonStyle.Secondary),
     ),
@@ -295,29 +289,7 @@ async function closeTicket(channel, actor, reason = null) {
     closedAt: Date.now(),
     closedBy: actor.id,
     closeReason: reason,
-  });
-
-  // odbierz dostęp autorowi i dodanym osobom
-  for (const id of [ticket.ownerId, ...ticket.participants]) {
-    await channel.permissionOverwrites.edit(id, { ViewChannel: false, SendMessages: false }).catch(() => null);
-  }
-  if (settings.closedCategoryId && channel.guild.channels.cache.has(settings.closedCategoryId)) {
-    await channel.setParent(settings.closedCategoryId, { lockPermissions: false }).catch(() => null);
-  }
-
-  await channel.send({
-    embeds: [
-      embed(COLORS.danger)
-        .setTitle('🔒 Ticket zamknięty')
-        .setDescription(`Zamknięty przez <@${actor.id}>${reason ? `\n**Powód:** ${reason}` : ''}`),
-    ],
-    components: [
-      new ActionRowBuilder().addComponents(
-        button('ticket:reopen', 'Otwórz ponownie', '🔓', ButtonStyle.Success),
-        button('ticket:transcript', 'Transkrypt', '📄', ButtonStyle.Secondary),
-        button('ticket:delete', 'Usuń', '🗑️', ButtonStyle.Danger),
-      ),
-    ],
+    closeRequest: null,
   });
 
   let transcript = null;
@@ -327,36 +299,63 @@ async function closeTicket(channel, actor, reason = null) {
     console.error('[transkrypt] Błąd generowania:', err);
   }
 
+  // odbierz dostęp autorowi i dodanym osobom
+  for (const id of [ticket.ownerId, ...ticket.participants]) {
+    await channel.permissionOverwrites.edit(id, { ViewChannel: false, SendMessages: false }).catch(() => null);
+  }
+  if (settings.closedCategoryId && channel.guild.channels.cache.has(settings.closedCategoryId)) {
+    await channel.setParent(settings.closedCategoryId, { lockPermissions: false }).catch(() => null);
+  }
+
+  await refreshControlMessage(channel, ticket);
+  await channel.send(ui.closedCard(ticket, actor.id, { messageCount: transcript?.messageCount, transcriptUrl: transcript?.url }));
+
   // wiadomość prywatna do autora
   const owner = await channel.client.users.fetch(ticket.ownerId).catch(() => null);
-  if (owner && (config.defaults.dmTranscript || config.defaults.askForRating)) {
+  const type = config.getType(ticket.typeId);
+  if (owner && (D.dmTranscript || D.askForRating)) {
     const dm = embed(COLORS.brand)
-      .setTitle(`🎫 Twój ticket na ${channel.guild.name} został zamknięty`)
+      .setAuthor({ name: channel.guild.name, iconURL: channel.guild.iconURL() ?? undefined })
+      .setTitle('🔒 Twój ticket został zamknięty')
       .setDescription(
-        `**Ticket:** #${String(ticket.number).padStart(4, '0')} (${config.getType(ticket.typeId)?.label ?? ticket.typeId})` +
-          `${reason ? `\n**Powód:** ${reason}` : ''}` +
-          (config.defaults.askForRating ? '\n\n**Jak oceniasz obsługę?** Kliknij liczbę gwiazdek poniżej.' : ''),
+        `Dziękujemy za kontakt, **${owner.globalName ?? owner.username}**! 💙` +
+          (D.askForRating ? '\n\n**Jak oceniasz obsługę?** Kliknij ocenę poniżej – to zajmie 5 sekund i bardzo nam pomoże.' : ''),
+      )
+      .addFields(
+        { name: 'Ticket', value: `\`#${pad(ticket.number)}\``, inline: true },
+        { name: 'Kategoria', value: `${type?.emoji ?? ''} ${type?.label ?? ticket.typeId}`, inline: true },
+        { name: 'Czas trwania', value: duration(ticket.closedAt - ticket.createdAt), inline: true },
+        { name: 'Obsługiwał', value: ticket.claimedBy ? `<@${ticket.claimedBy}>` : '—', inline: true },
+        { name: 'Zamknął', value: `<@${actor.id}>`, inline: true },
       );
+    if (reason) dm.addFields({ name: 'Powód', value: reason.slice(0, 1024) });
+    if (D.dmTranscript && transcript) dm.addFields({ name: '📄 Transkrypt', value: 'W załączniku – otwórz plik w przeglądarce.' });
     await owner
       .send({
         embeds: [dm],
-        files: config.defaults.dmTranscript && transcript ? [transcript.attachment] : [],
-        components: config.defaults.askForRating ? [ratingRow(channel.id)] : [],
+        files: D.dmTranscript && transcript ? [transcript.attachment] : [],
+        components: D.askForRating ? [ratingRow(channel.id)] : [],
       })
       .catch(() => null); // użytkownik ma zablokowane DM
   }
 
+  const links = [];
+  if (transcript?.url) links.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(transcript.url).setLabel('Transkrypt').setEmoji('📄'));
+  links.push(new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(channel.url).setLabel('Kanał').setEmoji('🎫'));
   await sendLog(channel.guild, {
     embeds: [
-      embed(COLORS.danger)
-        .setTitle('🔒 Zamknięto ticket')
+      logEmbed(COLORS.danger, '🔒 Zamknięto ticket', owner)
         .addFields(
-          { name: 'Ticket', value: `${channel} (#${ticket.number})`, inline: true },
+          { name: 'Ticket', value: `${channel}\n\`#${pad(ticket.number)}\``, inline: true },
           { name: 'Autor', value: `<@${ticket.ownerId}>`, inline: true },
           { name: 'Zamknął', value: `<@${actor.id}>`, inline: true },
+          { name: 'Obsługiwał', value: ticket.claimedBy ? `<@${ticket.claimedBy}>` : '—', inline: true },
+          { name: 'Czas trwania', value: duration(ticket.closedAt - ticket.createdAt), inline: true },
+          { name: 'Wiadomości', value: String(transcript?.messageCount ?? '—'), inline: true },
           { name: 'Powód', value: reason?.slice(0, 1024) || '—' },
         ),
     ],
+    components: [new ActionRowBuilder().addComponents(links)],
   });
 }
 
@@ -381,19 +380,19 @@ async function reopenTicket(channel, actor) {
     lastMessageBy: 'staff',
     warned: false,
   });
+  await refreshControlMessage(channel, ticket);
 
-  await channel.send({
-    content: `<@${ticket.ownerId}>`,
-    embeds: [embed(COLORS.success).setDescription(`🔓 Ticket został ponownie otwarty przez <@${actor.id}>.`)],
-  });
+  await channel.send(
+    ui.notice(COLORS.success, `## 🔓 Ticket ponownie otwarty\n<@${ticket.ownerId}>, <@${actor.id}> ponownie otworzył Twoje zgłoszenie.`, {
+      mentions: { users: [ticket.ownerId] },
+    }),
+  );
   await sendLog(channel.guild, {
     embeds: [
-      embed(COLORS.success)
-        .setTitle('🔓 Ponownie otwarto ticket')
-        .addFields(
-          { name: 'Ticket', value: `${channel} (#${ticket.number})`, inline: true },
-          { name: 'Przez', value: `<@${actor.id}>`, inline: true },
-        ),
+      logEmbed(COLORS.success, '🔓 Ponownie otwarto ticket', actor.user ?? actor).addFields(
+        { name: 'Ticket', value: `${channel} (\`#${pad(ticket.number)}\`)`, inline: true },
+        { name: 'Przez', value: `<@${actor.id}>`, inline: true },
+      ),
     ],
   });
 }
@@ -410,21 +409,50 @@ async function deleteTicket(channel, actor) {
   }
   db.updateTicket(channel.id, { status: 'deleted', deletedAt: Date.now(), deletedBy: actor.id });
 
-  const delay = config.defaults.deleteDelaySeconds ?? 5;
-  await channel.send({ embeds: [embed(COLORS.danger).setDescription(`🗑️ Kanał zostanie usunięty za **${delay} s**…`)] });
+  const delay = D.deleteDelaySeconds ?? 5;
+  await channel.send(
+    ui.notice(COLORS.danger, `🗑️ **Ticket zostanie usunięty ${ts(Date.now() + delay * 1000, 'R')}**\n-# Transkrypt został zapisany.`),
+  );
   await sendLog(channel.guild, {
     embeds: [
-      embed(COLORS.muted)
-        .setTitle('🗑️ Usunięto ticket')
-        .addFields(
-          { name: 'Ticket', value: `#${channel.name} (#${ticket.number})`, inline: true },
-          { name: 'Autor', value: `<@${ticket.ownerId}>`, inline: true },
-          { name: 'Usunął', value: `<@${actor.id}>`, inline: true },
-          ...(ticket.transcriptUrl ? [{ name: 'Transkrypt', value: `[Pobierz](${ticket.transcriptUrl})` }] : []),
-        ),
+      logEmbed(COLORS.muted, '🗑️ Usunięto ticket', actor.user ?? actor).addFields(
+        { name: 'Ticket', value: `#${channel.name} (\`#${pad(ticket.number)}\`)`, inline: true },
+        { name: 'Autor', value: `<@${ticket.ownerId}>`, inline: true },
+        { name: 'Usunął', value: `<@${actor.id}>`, inline: true },
+      ),
     ],
+    components: ticket.transcriptUrl
+      ? [
+          new ActionRowBuilder().addComponents(
+            new ButtonBuilder().setStyle(ButtonStyle.Link).setURL(ticket.transcriptUrl).setLabel('Transkrypt').setEmoji('📄'),
+          ),
+        ]
+      : [],
   });
   setTimeout(() => channel.delete(`Ticket usunięty przez ${actor.user?.tag ?? actor.tag ?? actor.id}`).catch(() => null), delay * 1000);
+}
+
+// ───────────────────────────── prośba o zamknięcie ─────────────────────────────
+
+async function requestClose(channel, staff) {
+  const ticket = requireOpen(channel);
+  if (ticket.closeRequest) throw new UserError('Prośba o zamknięcie już czeka na odpowiedź autora.');
+  const msg = await channel.send(ui.closeRequestCard(ticket, staff.id));
+  db.updateTicket(channel.id, { closeRequest: { by: staff.id, messageId: msg.id, at: Date.now() }, lastMessageBy: 'staff', lastActivity: Date.now() });
+}
+
+async function answerCloseRequest(channel, member, accepted, message) {
+  const ticket = requireOpen(channel);
+  if (!ticket.closeRequest) throw new UserError('Ta prośba jest już nieaktualna.');
+  await message.edit(ui.closeRequestCard(ticket, ticket.closeRequest.by, accepted ? 'accepted' : 'denied')).catch(() => null);
+  const by = ticket.closeRequest.by;
+  db.updateTicket(channel.id, { closeRequest: null });
+  if (accepted) {
+    await closeTicket(channel, member, 'Autor potwierdził rozwiązanie sprawy');
+  } else {
+    db.updateTicket(channel.id, { lastMessageBy: 'owner', lastActivity: Date.now(), warned: false });
+    await channel.send(ui.notice(COLORS.warning, `🔔 <@${by}>, autor nadal potrzebuje pomocy.`, { mentions: { users: [by] } }));
+  }
 }
 
 // ───────────────────────────── zarządzanie ─────────────────────────────
@@ -432,14 +460,20 @@ async function deleteTicket(channel, actor) {
 async function claimTicket(channel, member) {
   const ticket = requireOpen(channel);
   if (ticket.claimedBy === member.id) throw new UserError('Już obsługujesz ten ticket.');
-  if (ticket.claimedBy && !isAdmin(member)) {
-    throw new UserError(`Ten ticket obsługuje już <@${ticket.claimedBy}>.`);
-  }
+  if (ticket.claimedBy && !isAdmin(member)) throw new UserError(`Ten ticket obsługuje już <@${ticket.claimedBy}>.`);
+  const previous = ticket.claimedBy;
   db.updateTicket(channel.id, { claimedBy: member.id });
   await refreshControlMessage(channel, ticket);
-  await channel.send({ embeds: [embed(COLORS.success).setDescription(`🙋 ${member} przejmuje ten ticket i zajmie się Twoim zgłoszeniem.`)] });
+  await channel.send(
+    ui.notice(
+      COLORS.success,
+      `### 🙋 ${member.displayName} zajmie się Twoim zgłoszeniem\n<@${ticket.ownerId}>, od teraz Twoim ticketem opiekuje się ${member}.` +
+        (previous ? `\n-# Przejęte od <@${previous}>` : ''),
+      { thumbnail: member.displayAvatarURL({ size: 128 }) },
+    ),
+  );
   await sendLog(channel.guild, {
-    embeds: [embed(COLORS.info).setTitle('🙋 Przejęto ticket').setDescription(`${member} przejął ${channel} (#${ticket.number})`)],
+    embeds: [logEmbed(COLORS.info, '🙋 Przejęto ticket', member.user).setDescription(`${member} przejął ${channel} (\`#${pad(ticket.number)}\`)`)],
   });
 }
 
@@ -451,19 +485,28 @@ async function unclaimTicket(channel, member) {
   }
   db.updateTicket(channel.id, { claimedBy: null });
   await refreshControlMessage(channel, ticket);
-  await channel.send({ embeds: [embed(COLORS.warning).setDescription(`↩️ ${member} przestał obsługiwać ten ticket.`)] });
+  await channel.send(ui.notice(COLORS.warning, `↩️ ${member} przestał obsługiwać ten ticket – czeka na nową osobę z supportu.`));
 }
 
-async function addUser(channel, user, actor) {
+async function addUsers(channel, users, actor) {
   const ticket = requireOpen(channel);
-  if (user.bot) throw new UserError('Nie możesz dodać bota.');
-  if (user.id === ticket.ownerId || ticket.participants.includes(user.id)) {
-    throw new UserError(`${user} ma już dostęp do tego ticketu.`);
+  const added = [];
+  for (const user of users) {
+    if (user.bot || user.id === ticket.ownerId || ticket.participants.includes(user.id)) continue;
+    await channel.permissionOverwrites.edit(user.id, allow(OWNER_PERMS));
+    ticket.participants.push(user.id);
+    added.push(user.id);
   }
-  await channel.permissionOverwrites.edit(user.id, allow(OWNER_PERMS));
-  db.updateTicket(channel.id, { participants: [...ticket.participants, user.id] });
-  await channel.send({ embeds: [embed(COLORS.success).setDescription(`➕ ${actor} dodał ${user} do ticketu.`)] });
+  if (!added.length) throw new UserError('Wybrane osoby mają już dostęp do ticketu (lub są botami).');
+  db.updateTicket(channel.id, { participants: ticket.participants });
+  await refreshControlMessage(channel, ticket);
+  await channel.send(
+    ui.notice(COLORS.success, `➕ ${actor} dodał do ticketu: ${added.map((id) => `<@${id}>`).join(', ')}`, { mentions: { users: added } }),
+  );
+  return added.length;
 }
+
+const addUser = (channel, user, actor) => addUsers(channel, [user], actor);
 
 async function removeUser(channel, user, actor) {
   const ticket = requireOpen(channel);
@@ -471,30 +514,112 @@ async function removeUser(channel, user, actor) {
   if (!ticket.participants.includes(user.id)) throw new UserError(`${user} nie jest dodany do tego ticketu.`);
   await channel.permissionOverwrites.delete(user.id);
   db.updateTicket(channel.id, { participants: ticket.participants.filter((id) => id !== user.id) });
-  await channel.send({ embeds: [embed(COLORS.warning).setDescription(`➖ ${actor} usunął ${user} z ticketu.`)] });
+  await refreshControlMessage(channel, ticket);
+  await channel.send(ui.notice(COLORS.warning, `➖ ${actor} usunął ${user} z ticketu.`));
 }
 
 async function setPriority(channel, level, actor) {
   const ticket = requireOpen(channel);
   if (!PRIORITIES[level]) throw new UserError('Nieznany priorytet.');
+  if (ticket.priority === level) throw new UserError('Ticket ma już ten priorytet.');
   db.updateTicket(channel.id, { priority: level });
   await refreshControlMessage(channel, ticket);
   const renamed = await safeRename(channel, channelName(ticket, config.getType(ticket.typeId))).catch(() => ({ ok: false }));
   const p = PRIORITIES[level];
-  await channel.send({
-    embeds: [
-      embed(p.color).setDescription(
-        `${p.emoji} ${actor} ustawił priorytet na **${p.label}**.` +
-          (renamed.ok ? '' : renamed.wait ? `\n-# Nazwa kanału zaktualizuje się przy następnej zmianie (limit Discorda, ~${renamed.wait} min).` : ''),
-      ),
-    ],
-  });
+  await channel.send(
+    ui.notice(
+      p.color,
+      `${p.emoji} ${actor} zmienił priorytet na **${p.label}**.` +
+        (renamed.wait ? `\n-# Nazwa kanału zaktualizuje się przy następnej zmianie (limit Discorda, ~${renamed.wait} min).` : ''),
+    ),
+  );
+}
+
+async function moveTicket(channel, typeId, actor) {
+  const ticket = requireOpen(channel);
+  const from = config.getType(ticket.typeId);
+  const to = config.getType(typeId);
+  if (!to) throw new UserError('Nie ma takiej kategorii.');
+  if (to.id === ticket.typeId) throw new UserError('Ticket jest już w tej kategorii.');
+
+  const guild = channel.guild;
+  const oldRoles = new Set(staffRoleIds(guild.id, from));
+  const newRoles = new Set(staffRoleIds(guild.id, to));
+  for (const id of newRoles) {
+    if (guild.roles.cache.has(id)) await channel.permissionOverwrites.edit(id, allow(STAFF_PERMS)).catch(() => null);
+  }
+  for (const id of oldRoles) {
+    if (!newRoles.has(id)) await channel.permissionOverwrites.delete(id).catch(() => null);
+  }
+
+  db.updateTicket(channel.id, { typeId: to.id });
+  await refreshControlMessage(channel, ticket);
+  const renamed = await safeRename(channel, channelName(ticket, to)).catch(() => ({ ok: false }));
+  const pings = [...newRoles].filter((id) => !oldRoles.has(id) && guild.roles.cache.has(id));
+  await channel.send(
+    ui.notice(
+      COLORS.info,
+      `🔁 ${actor} przeniósł ticket: **${from?.emoji ?? ''} ${from?.label ?? '?'}** → **${to.emoji ?? ''} ${to.label}**` +
+        (pings.length ? `\n🔔 ${pings.map((id) => `<@&${id}>`).join(' ')}` : '') +
+        (renamed.wait ? `\n-# Nazwa kanału zmieni się później (limit Discorda, ~${renamed.wait} min).` : ''),
+      { mentions: { roles: pings } },
+    ),
+  );
 }
 
 async function renameTicket(channel, name) {
   requireOpen(channel);
   const result = await safeRename(channel, name);
   if (!result.ok) throw new UserError(`Discord pozwala zmienić nazwę kanału 2 razy na 10 minut. Spróbuj za ~${result.wait} min.`);
+}
+
+/** Autor „woła" support – z cooldownem, żeby nie spamować. */
+async function pingStaff(channel, member) {
+  const ticket = requireOpen(channel);
+  if (ticket.ownerId !== member.id) throw new UserError('Tylko autor ticketu może wezwać support.');
+  const after = (D.pingStaffAfterMinutes ?? 10) * 60_000;
+  const cooldown = (D.pingStaffCooldownMinutes ?? 30) * 60_000;
+  if (Date.now() - ticket.createdAt < after) {
+    throw new UserError(`Daj nam chwilę 🙂 Support możesz wezwać ${ts(ticket.createdAt + after, 'R')}.`);
+  }
+  if (ticket.lastMessageBy === 'staff') throw new UserError('Support już Ci odpowiedział – sprawdź ostatnie wiadomości.');
+  if (ticket.lastStaffPing && Date.now() - ticket.lastStaffPing < cooldown) {
+    throw new UserError(`Support został już wezwany. Kolejne wezwanie możliwe ${ts(ticket.lastStaffPing + cooldown, 'R')}.`);
+  }
+  db.updateTicket(channel.id, { lastStaffPing: Date.now() });
+  const roles = ticket.claimedBy ? [] : staffRoleIds(channel.guild.id, config.getType(ticket.typeId)).filter((id) => channel.guild.roles.cache.has(id));
+  const who = ticket.claimedBy ? `<@${ticket.claimedBy}>` : roles.map((id) => `<@&${id}>`).join(' ') || 'Support';
+  await channel.send(
+    ui.notice(COLORS.warning, `🔔 ${who} – <@${ticket.ownerId}> czeka na odpowiedź od ${duration(Date.now() - ticket.lastActivity)}.`, {
+      mentions: { users: ticket.claimedBy ? [ticket.claimedBy] : [], roles },
+    }),
+  );
+}
+
+async function stillNeedHelp(channel, member, message) {
+  const ticket = requireOpen(channel);
+  if (ticket.ownerId !== member.id) throw new UserError('Ten przycisk jest dla autora ticketu.');
+  db.updateTicket(channel.id, { lastMessageBy: 'owner', lastActivity: Date.now(), warned: false });
+  await message
+    .edit(ui.notice(COLORS.success, `✋ <@${ticket.ownerId}> nadal potrzebuje pomocy – automatyczne zamknięcie anulowane.`))
+    .catch(() => null);
+}
+
+async function sendSnippet(channel, snippet, staff) {
+  const ticket = requireOpen(channel);
+  const content = snippet.content
+    .replaceAll('{user}', `<@${ticket.ownerId}>`)
+    .replaceAll('{staff}', `${staff}`)
+    .replaceAll('{server}', channel.guild.name);
+  await channel.send(
+    ui.notice(COLORS.brand, `${content}\n-# 💬 ${staff.displayName} · ${snippet.name}`, {
+      thumbnail: staff.displayAvatarURL({ size: 128 }),
+      mentions: { users: [ticket.ownerId] },
+    }),
+  );
+  const patch = { lastActivity: Date.now(), lastMessageBy: 'staff', warned: false };
+  if (!ticket.firstResponseAt) patch.firstResponseAt = Date.now();
+  db.updateTicket(channel.id, patch);
 }
 
 function requireOpen(channel) {
@@ -514,16 +639,16 @@ async function saveRating(client, channelId, userId, stars, comment) {
 
   const guild = client.guilds.cache.get(ticket.guildId);
   if (guild) {
+    const user = await client.users.fetch(userId).catch(() => null);
     await sendLog(guild, {
       embeds: [
-        embed(stars >= 4 ? COLORS.success : stars === 3 ? COLORS.warning : COLORS.danger)
-          .setTitle('⭐ Nowa ocena obsługi')
-          .setDescription(`${'⭐'.repeat(stars)}${'☆'.repeat(5 - stars)} (**${stars}/5**)`)
+        logEmbed(stars >= 4 ? COLORS.success : stars === 3 ? COLORS.warning : COLORS.danger, '⭐ Nowa ocena obsługi', user)
+          .setDescription(`## ${'⭐'.repeat(stars)}${'☆'.repeat(5 - stars)}\n**${stars}/5**`)
           .addFields(
-            { name: 'Ticket', value: `#${ticket.number}`, inline: true },
+            { name: 'Ticket', value: `\`#${pad(ticket.number)}\``, inline: true },
             { name: 'Autor', value: `<@${ticket.ownerId}>`, inline: true },
             { name: 'Obsługiwał', value: ticket.claimedBy ? `<@${ticket.claimedBy}>` : '—', inline: true },
-            ...(comment ? [{ name: 'Komentarz', value: comment.slice(0, 1024) }] : []),
+            ...(comment ? [{ name: 'Komentarz', value: `>>> ${comment.slice(0, 1000)}` }] : []),
           ),
       ],
     });
@@ -559,14 +684,7 @@ async function runInactivityCheck(client) {
         await closeTicket(channel, client.user, `Automatyczne zamknięcie – brak odpowiedzi od ${duration(idle)}`);
       } else if (warnAfter > 0 && warnAfter < closeAfter && idle >= warnAfter && !ticket.warned) {
         db.updateTicket(ticket.channelId, { warned: true });
-        await channel.send({
-          content: `<@${ticket.ownerId}>`,
-          embeds: [
-            embed(COLORS.warning)
-              .setTitle('⏰ Czy potrzebujesz jeszcze pomocy?')
-              .setDescription(`Jeśli nie odpowiesz, ticket zostanie automatycznie zamknięty ${ts(ticket.lastActivity + closeAfter, 'R')}.`),
-          ],
-        });
+        await channel.send(ui.inactivityWarning(ticket, ticket.lastActivity + closeAfter));
       }
     } catch (err) {
       console.error(`[auto-close] ticket ${ticket.channelId}:`, err.message);
@@ -576,19 +694,28 @@ async function runInactivityCheck(client) {
 
 module.exports = {
   UserError,
+  refreshControlMessage,
   buildPanel,
+  refreshPanels,
   buildForm,
   checkCanOpen,
   openTicket,
   closeTicket,
   reopenTicket,
   deleteTicket,
+  requestClose,
+  answerCloseRequest,
   claimTicket,
   unclaimTicket,
   addUser,
+  addUsers,
   removeUser,
   setPriority,
+  moveTicket,
   renameTicket,
+  pingStaff,
+  stillNeedHelp,
+  sendSnippet,
   archiveTranscript,
   saveRating,
   runInactivityCheck,

@@ -29,6 +29,16 @@ function load() {
     }
   }
 
+  raw.snippets ??= [];
+  for (const s of raw.snippets) {
+    if (!s.id || !s.content) throw new Error('config.json: każda gotowa odpowiedź (snippets) musi mieć "id" i "content".');
+    s.name ??= s.id;
+  }
+  raw.panel ??= {};
+  raw.panel.rules ??= [];
+  raw.workingHours ??= { enabled: false };
+  raw.channelNameFormat ??= '{prio}{prefix}-{number}';
+
   raw.brand ??= {};
   raw.brand.colorInt = parseInt(String(raw.brand.color ?? '#5865F2').replace('#', ''), 16);
   raw.defaults ??= {};
