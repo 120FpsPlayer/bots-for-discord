@@ -172,6 +172,6 @@
     "dmOnOpen": true,
     "pingStaffCooldownMinutes": 30,
     "pingStaffAfterMinutes": 10,
-    "panelRefreshMinutes": 10
+    "panelRefreshMinutes": 5
   }
 }

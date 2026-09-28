@@ -44,21 +44,48 @@ const D = config.defaults;
 
 const buildPanel = (guild, style) => ui.panelPayload(guild, style);
 
-/** Odświeża statystyki i status godzin pracy na wszystkich zapisanych panelach. */
+/** Odświeża wszystkie panele jednego serwera (statystyki, godziny pracy). */
+async function refreshGuildPanels(guild) {
+  for (const panel of db.panels(guild.id)) {
+    const channel = guild.channels.cache.get(panel.channelId);
+    if (!channel) {
+      db.removePanel(guild.id, panel.messageId);
+      continue;
+    }
+    const message = await channel.messages.fetch(panel.messageId).catch((e) => (e.code === 10008 ? null : undefined));
+    if (message === null) {
+      db.removePanel(guild.id, panel.messageId); // panel został usunięty
+      continue;
+    }
+    if (!message) continue;
+    await message
+      .edit(buildPanel(guild, panel.style))
+      .catch((err) => console.warn(`[panel] Nie udało się odświeżyć panelu w #${channel.name}:`, err.message));
+  }
+}
+
+/** Odświeża panele na wszystkich serwerach (wywoływane cyklicznie). */
 async function refreshPanels(client) {
   for (const guildId of db.allGuildIds()) {
     const guild = client.guilds.cache.get(guildId);
-    if (!guild) continue;
-    for (const panel of db.panels(guildId)) {
-      const channel = guild.channels.cache.get(panel.channelId);
-      const message = channel && (await channel.messages.fetch(panel.messageId).catch((e) => (e.code === 10008 ? null : undefined)));
-      if (message === null || !channel) {
-        db.removePanel(guildId, panel.messageId);
-        continue;
-      }
-      if (message) await message.edit(buildPanel(guild, panel.style)).catch(() => null);
-    }
+    if (guild) await refreshGuildPanels(guild);
   }
+}
+
+/**
+ * Odświeża panele chwilę po zmianie (otwarcie, zamknięcie, pierwsza odpowiedź).
+ * Kilka zmian w krótkim czasie = jedno odświeżenie.
+ */
+const panelTimers = new Map();
+function schedulePanelRefresh(guild) {
+  if (!guild || panelTimers.has(guild.id)) return;
+  panelTimers.set(
+    guild.id,
+    setTimeout(() => {
+      panelTimers.delete(guild.id);
+      refreshGuildPanels(guild).catch((err) => console.warn('[panel]', err.message));
+    }, 3000),
+  );
 }
 
 function buildForm(type, origin) {
@@ -185,6 +212,7 @@ async function openTicket(member, type, answers = []) {
     const pings = settings.pingStaffOnOpen ? staffRoles : [];
     const msg = await channel.send(await renderCard(guild, ticket, pings));
     db.updateTicket(channel.id, { controlMessageId: msg.id });
+    schedulePanelRefresh(guild);
     await msg.pin().catch(() => null);
 
     if (D.dmOnOpen) {
@@ -292,6 +320,8 @@ async function closeTicket(channel, actor, reason = null) {
     closeRequest: null,
   });
 
+  schedulePanelRefresh(channel.guild);
+
   let transcript = null;
   try {
     transcript = await archiveTranscript(channel, ticket, actor);
@@ -381,6 +411,7 @@ async function reopenTicket(channel, actor) {
     warned: false,
   });
   await refreshControlMessage(channel, ticket);
+  schedulePanelRefresh(channel.guild);
 
   await channel.send(
     ui.notice(COLORS.success, `## 🔓 Ticket ponownie otwarty\n<@${ticket.ownerId}>, <@${actor.id}> ponownie otworzył Twoje zgłoszenie.`, {
@@ -408,6 +439,7 @@ async function deleteTicket(channel, actor) {
     await archiveTranscript(channel, ticket, actor).catch((err) => console.error('[transkrypt]', err));
   }
   db.updateTicket(channel.id, { status: 'deleted', deletedAt: Date.now(), deletedBy: actor.id });
+  schedulePanelRefresh(channel.guild);
 
   const delay = D.deleteDelaySeconds ?? 5;
   await channel.send(
@@ -618,7 +650,10 @@ async function sendSnippet(channel, snippet, staff) {
     }),
   );
   const patch = { lastActivity: Date.now(), lastMessageBy: 'staff', warned: false };
-  if (!ticket.firstResponseAt) patch.firstResponseAt = Date.now();
+  if (!ticket.firstResponseAt) {
+    patch.firstResponseAt = Date.now();
+    schedulePanelRefresh(channel.guild);
+  }
   db.updateTicket(channel.id, patch);
 }
 
@@ -697,6 +732,8 @@ module.exports = {
   refreshControlMessage,
   buildPanel,
   refreshPanels,
+  refreshGuildPanels,
+  schedulePanelRefresh,
   buildForm,
   checkCanOpen,
   openTicket,

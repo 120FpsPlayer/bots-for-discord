@@ -7,7 +7,7 @@ Kompletny bot do obsługi zgłoszeń napisany w **discord.js v14**. Cały interf
 ### 🎨 Wygląd
 - **Nowoczesne karty Discorda (Components V2):** kolorowe kontenery, sekcje z miniaturkami, separatory. Bez starych embedów.
 - **Panel ticketów:** baner, logo serwera, zasady, osobna karta z przyciskiem dla każdej kategorii (albo lista rozwijana).
-- **Panel na żywo:** pokazuje 🟢/🌙 godziny pracy supportu, ⏱️ średni czas odpowiedzi i 📨 liczbę otwartych ticketów. Odświeża się automatycznie.
+- **Panel na żywo:** pokazuje 🟢/🌙 godziny pracy supportu, ⏱️ średni czas odpowiedzi i 📨 liczbę otwartych ticketów. Odświeża się kilka sekund po każdej zmianie (otwarcie, zamknięcie, pierwsza odpowiedź supportu), a dodatkowo co 5 minut.
 - **Karta ticketu:** avatar autora, formularz, status, priorytet, kto obsługuje, dodane osoby, wiek konta, data dołączenia i liczba poprzednich ticketów. Kolor paska zależy od priorytetu.
 - **Karta zamknięcia:** czas trwania, czas pierwszej odpowiedzi, kto obsługiwał, liczba wiadomości i przycisk pobrania transkryptu.
 - **Transkrypt HTML jak Discord:** statystyki na górze, formularz, separatory dni, grupowanie wiadomości, odpowiedzi (↪), plakietki AUTOR / SUPPORT / BOT, naklejki, znacznik „edytowano”, karty bota.
@@ -70,7 +70,9 @@ Kompletny bot do obsługi zgłoszeń napisany w **discord.js v14**. Cały interf
 
 ## 🔐 Uprawnienia i role – plik `.env`
 
-Wszystkie role i osoby ustawisz w `.env` (wiele ID oddzielasz przecinkami). ID skopiujesz po włączeniu
+Wszystkie role i osoby ustawisz w `.env`. **W każdym polu możesz wpisać dowolnie dużo ról** – oddziel je przecinkami
+(spacje, średniki i skopiowane wzmianki `<@&…>` też działają). Po starcie bot wypisze w konsoli wczytane role
+i ostrzeże o ID, których nie ma na serwerze. ID skopiujesz po włączeniu
 **Trybu dewelopera** (Ustawienia → Zaawansowane), klikając PPM na osobę/rolę → *Kopiuj ID*.
 
 | Zmienna | Kto to jest | Co może |
@@ -96,8 +98,8 @@ Przykład:
 ```env
 OWNER_IDS=123456789012345678
 ADMIN_ROLE_IDS=234567890123456789
-SUPPORT_ROLE_IDS=345678901234567890,456789012345678901
-SUPPORT_ROLE_IDS_REPORT=567890123456789012
+SUPPORT_ROLE_IDS=345678901234567890,456789012345678901,111111111111111111,222222222222222222
+SUPPORT_ROLE_IDS_REPORT=567890123456789012,333333333333333333
 OPEN_ROLE_IDS=678901234567890123
 BLOCKED_ROLE_IDS=789012345678901234
 ```

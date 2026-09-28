@@ -8,14 +8,25 @@
 //   użytkownik  – może otwierać tickety, jeśli spełnia OPEN_ROLE_IDS / BLOCKED_ROLE_IDS
 const { PermissionFlagsBits } = require('discord.js');
 
-const ID = /^\d{17,20}$/;
-
+/**
+ * Czyta listę ID z .env. Akceptuje dowolny format i dowolną liczbę ról, np.:
+ *   SUPPORT_ROLE_IDS=111,222,333
+ *   SUPPORT_ROLE_IDS=111, 222, 333
+ *   SUPPORT_ROLE_IDS="111 222 333"
+ *   SUPPORT_ROLE_IDS=<@&111>,<@&222>        (skopiowane wzmianki ról)
+ * Działa też nazwa w liczbie pojedynczej (SUPPORT_ROLE_ID) – obie się sumują.
+ */
 function ids(name) {
-  const raw = process.env[name] ?? '';
-  const list = raw.split(/[\s,;]+/).filter(Boolean);
-  const bad = list.filter((v) => !ID.test(v));
-  if (bad.length) console.warn(`[.env] ${name}: pominięto niepoprawne ID: ${bad.join(', ')}`);
-  return list.filter((v) => ID.test(v));
+  const names = [name, name.replace(/_IDS(?=$|_)/, '_ID')];
+  const found = [];
+  for (const key of new Set(names)) {
+    const raw = process.env[key];
+    if (!raw) continue;
+    const list = raw.match(/\d{17,20}/g) ?? [];
+    if (!list.length && raw.trim()) console.warn(`[.env] ${key}: nie znaleziono żadnego poprawnego ID (17–20 cyfr).`);
+    found.push(...list);
+  }
+  return [...new Set(found)];
 }
 
 function bool(name, fallback) {
@@ -42,7 +53,12 @@ const env = {
 };
 
 /** Dodatkowe role supportu dla konkretnego typu, np. SUPPORT_ROLE_IDS_REPORT=... */
-const typeSupportRoleIds = (type) => (type ? ids(`SUPPORT_ROLE_IDS_${type.id.toUpperCase().replace(/-/g, '_')}`) : []);
+const typeRoleCache = new Map();
+function typeSupportRoleIds(type) {
+  if (!type) return [];
+  if (!typeRoleCache.has(type.id)) typeRoleCache.set(type.id, ids(`SUPPORT_ROLE_IDS_${type.id.toUpperCase().replace(/-/g, '_')}`));
+  return typeRoleCache.get(type.id);
+}
 
 const hasRole = (member, roleIds) => roleIds.length > 0 && member.roles.cache.hasAny(...roleIds);
 
@@ -91,4 +107,28 @@ function openDeniedReason(member) {
   return null;
 }
 
-module.exports = { env, isOwner, isAdmin, isStaff, ticketRoleIds, openDeniedReason };
+/** Wypisuje w konsoli wczytane role i ostrzega o rolach, których nie ma na serwerze. */
+function reportRoles(guilds, ticketTypes) {
+  const groups = [
+    ['OWNER_IDS', env.ownerIds, 'user'],
+    ['ADMIN_ROLE_IDS', env.adminRoleIds],
+    ['SUPPORT_ROLE_IDS', env.supportRoleIds],
+    ...ticketTypes.map((t) => [`SUPPORT_ROLE_IDS_${t.id.toUpperCase().replace(/-/g, '_')}`, typeSupportRoleIds(t)]),
+    ['OPEN_ROLE_IDS', env.openRoleIds],
+    ['BLOCKED_ROLE_IDS', env.blockedRoleIds],
+  ];
+  for (const [name, list, kind] of groups) {
+    if (!list.length) continue;
+    if (kind === 'user') {
+      console.log(`🔐 ${name}: ${list.length} os.`);
+      continue;
+    }
+    const names = list.map((id) => {
+      const role = guilds.map((g) => g.roles.cache.get(id)).find(Boolean);
+      return role ? `@${role.name}` : `⚠️ ${id} (nie ma takiej roli na serwerze!)`;
+    });
+    console.log(`🔐 ${name}: ${list.length} ${list.length === 1 ? 'rola' : 'role'} → ${names.join(', ')}`);
+  }
+}
+
+module.exports = { env, reportRoles, isOwner, isAdmin, isStaff, ticketRoleIds, openDeniedReason };

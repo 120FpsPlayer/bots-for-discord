@@ -4,8 +4,9 @@ const config = require('./lib/config');
 const db = require('./lib/db');
 const loadCommands = require('./commands');
 const handleInteraction = require('./handlers/interactions');
-const { runInactivityCheck, refreshPanels } = require('./lib/tickets');
+const { runInactivityCheck, refreshPanels, schedulePanelRefresh } = require('./lib/tickets');
 const { isStaff } = require('./lib/utils');
+const { reportRoles } = require('./lib/permissions');
 
 if (!process.env.DISCORD_TOKEN) {
   console.error('Brak DISCORD_TOKEN w pliku .env – skopiuj .env.example do .env i uzupełnij.');
@@ -22,6 +23,8 @@ const client = new Client({
 
 client.once(Events.ClientReady, async (c) => {
   console.log(`✅ Zalogowano jako ${c.user.tag} · serwery: ${c.guilds.cache.size} · komendy: ${commands.size}`);
+
+  reportRoles([...c.guilds.cache.values()], config.ticketTypes);
 
   // automatyczna rejestracja komend slash (wyłącz: AUTO_DEPLOY_COMMANDS=false)
   if (!['false', '0', 'nie'].includes(String(process.env.AUTO_DEPLOY_COMMANDS).toLowerCase())) {
@@ -57,7 +60,7 @@ client.once(Events.ClientReady, async (c) => {
   setInterval(tick, 5 * 60_000);
 
   // odświeżanie paneli (statystyki, godziny pracy)
-  const panelMinutes = config.defaults.panelRefreshMinutes ?? 10;
+  const panelMinutes = config.defaults.panelRefreshMinutes ?? 5;
   if (panelMinutes > 0) {
     const refresh = () => refreshPanels(c).catch((err) => console.error('[panel]', err));
     setTimeout(refresh, 15_000);
@@ -75,7 +78,10 @@ client.on(Events.MessageCreate, (message) => {
 
   const fromStaff = message.author.id !== ticket.ownerId && isStaff(message.member, config.getType(ticket.typeId));
   const patch = { lastActivity: Date.now(), lastMessageBy: fromStaff ? 'staff' : 'owner', warned: false };
-  if (fromStaff && !ticket.firstResponseAt) patch.firstResponseAt = Date.now();
+  if (fromStaff && !ticket.firstResponseAt) {
+    patch.firstResponseAt = Date.now();
+    schedulePanelRefresh(message.guild); // nowy średni czas odpowiedzi
+  }
   // odpowiedź autora anuluje oczekującą prośbę o zamknięcie
   if (!fromStaff && ticket.closeRequest) patch.closeRequest = null;
   db.updateTicket(message.channel.id, patch);
@@ -84,7 +90,10 @@ client.on(Events.MessageCreate, (message) => {
 // ktoś usunął kanał ticketu ręcznie
 client.on(Events.ChannelDelete, (channel) => {
   const ticket = db.getTicket(channel.id);
-  if (ticket && ticket.status !== 'deleted') db.updateTicket(channel.id, { status: 'deleted', deletedAt: Date.now() });
+  if (ticket && ticket.status !== 'deleted') {
+    db.updateTicket(channel.id, { status: 'deleted', deletedAt: Date.now() });
+    schedulePanelRefresh(channel.guild);
+  }
 });
 
 function shutdown() {
