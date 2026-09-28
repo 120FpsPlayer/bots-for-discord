@@ -1,0 +1,26 @@
+{
+  "name": "kreator-serwera",
+  "version": "1.0.0",
+  "description": "Bot Discord, który jedną komendą /stworz buduje cały serwer: role, uprawnienia, kategorie, kanały, regulamin, panele i AutoMod.",
+  "main": "src/index.js",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test",
+    "check": "node --check src/index.js && node --test"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "discord.js",
+    "server-builder",
+    "kreator"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.27.0"
+  }
+}
