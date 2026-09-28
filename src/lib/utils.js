@@ -28,7 +28,6 @@ function embed(color = COLORS.brand) {
 const ok = (description) => embed(COLORS.success).setDescription(`✅ ${description}`);
 const fail = (description) => embed(COLORS.danger).setDescription(`❌ ${description}`);
 
-/** Odpowiada na interakcję niezależnie od tego, czy była już potwierdzona. */
 async function reply(interaction, payload, ephemeral = true) {
   const data = typeof payload === 'string' ? { embeds: [ok(payload)] } : { ...payload };
   if (interaction.deferred && !interaction.replied) return interaction.editReply(data);
@@ -39,7 +38,6 @@ async function reply(interaction, payload, ephemeral = true) {
 
 const replyError = (interaction, text) => reply(interaction, { embeds: [fail(text)] });
 
-/** Role z dostępem do ticketu: .env (admin + support) + /setup + config.json. */
 function staffRoleIds(guildId, type) {
   return perms.ticketRoleIds(db.settings(guildId).staffRoleIds, type);
 }
@@ -51,11 +49,6 @@ function isStaff(member, type = null) {
 
 const isAdmin = (member) => perms.isAdmin(member);
 
-/**
- * Discord pozwala na 2 zmiany nazwy kanału na 10 minut. discord.js w takim
- * przypadku czeka w kolejce nawet 10 minut, blokując inne operacje na kanale –
- * dlatego sami pilnujemy limitu i odmawiamy zamiast wisieć.
- */
 const renameHistory = new Map();
 function canRename(channelId) {
   const now = Date.now();
@@ -99,7 +92,6 @@ function channelName(ticket, type) {
   );
 }
 
-/** Czy support jest teraz w godzinach pracy? Zwraca { open, text }. */
 function workingStatus(now = new Date()) {
   const wh = config.workingHours;
   if (!wh?.enabled) return { open: true, text: null };
@@ -129,7 +121,6 @@ function workingStatus(now = new Date()) {
   };
 }
 
-/** Średni czas pierwszej odpowiedzi z ostatnich 30 dni. */
 function avgResponseTime(guildId) {
   const since = Date.now() - 30 * 86_400_000;
   const times = db
@@ -138,7 +129,6 @@ function avgResponseTime(guildId) {
   return times.length ? times.reduce((a, b) => a + b, 0) / times.length : null;
 }
 
-/** Ustandaryzowany embed do logów. */
 function logEmbed(color, title, user) {
   const e = embed(color).setTitle(title);
   if (user) e.setAuthor({ name: user.tag ?? user.username ?? 'Użytkownik', iconURL: user.displayAvatarURL?.() });

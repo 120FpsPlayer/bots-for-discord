@@ -26,7 +26,6 @@ client.once(Events.ClientReady, async (c) => {
 
   reportRoles([...c.guilds.cache.values()], config.ticketTypes);
 
-  // automatyczna rejestracja komend slash (wyłącz: AUTO_DEPLOY_COMMANDS=false)
   if (!['false', '0', 'nie'].includes(String(process.env.AUTO_DEPLOY_COMMANDS).toLowerCase())) {
     const body = [...commands.values()].map((cmd) => cmd.data.toJSON());
     const guildId = process.env.GUILD_ID?.trim();
@@ -39,7 +38,6 @@ client.once(Events.ClientReady, async (c) => {
     }
   }
 
-  // rotujący status bota
   let presenceIndex = 0;
   const updatePresence = () => {
     const open = db.tickets((x) => x.status === 'open').length;
@@ -59,7 +57,6 @@ client.once(Events.ClientReady, async (c) => {
   setTimeout(tick, 30_000);
   setInterval(tick, 5 * 60_000);
 
-  // odświeżanie paneli (statystyki, godziny pracy)
   const panelMinutes = config.defaults.panelRefreshMinutes ?? 5;
   if (panelMinutes > 0) {
     const refresh = () => refreshPanels(c).catch((err) => console.error('[panel]', err));
@@ -70,7 +67,6 @@ client.once(Events.ClientReady, async (c) => {
 
 client.on(Events.InteractionCreate, (interaction) => handleInteraction(interaction, commands));
 
-// śledzenie aktywności – potrzebne do statystyk i auto-zamykania
 client.on(Events.MessageCreate, (message) => {
   if (!message.guild || message.author.bot) return;
   const ticket = db.getTicket(message.channel.id);
@@ -80,14 +76,12 @@ client.on(Events.MessageCreate, (message) => {
   const patch = { lastActivity: Date.now(), lastMessageBy: fromStaff ? 'staff' : 'owner', warned: false };
   if (fromStaff && !ticket.firstResponseAt) {
     patch.firstResponseAt = Date.now();
-    schedulePanelRefresh(message.guild); // nowy średni czas odpowiedzi
+    schedulePanelRefresh(message.guild);
   }
-  // odpowiedź autora anuluje oczekującą prośbę o zamknięcie
   if (!fromStaff && ticket.closeRequest) patch.closeRequest = null;
   db.updateTicket(message.channel.id, patch);
 });
 
-// ktoś usunął kanał ticketu ręcznie
 client.on(Events.ChannelDelete, (channel) => {
   const ticket = db.getTicket(channel.id);
   if (ticket && ticket.status !== 'deleted') {

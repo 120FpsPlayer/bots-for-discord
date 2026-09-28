@@ -1,6 +1,3 @@
-// Prosta, bezzależnościowa baza danych JSON z atomowym zapisem.
-// Wystarcza w zupełności dla setek tysięcy ticketów – bez kompilowania
-// natywnych modułów i bez zewnętrznego serwera.
 const fs = require('node:fs');
 const path = require('node:path');
 const config = require('./config');
@@ -56,7 +53,6 @@ function guild(guildId) {
     save();
   }
   const g = state.guilds[guildId];
-  // uzupełnij nowe pola po aktualizacji bota
   g.settings = { ...defaultSettings(), ...g.settings };
   g.blacklist ??= [];
   return g;
@@ -66,7 +62,6 @@ module.exports = {
   load,
   flush,
 
-  /** Ustawienia serwera; kanały z .env służą jako wartości domyślne. */
   settings(guildId) {
     const { env } = require('./permissions');
     const s = guild(guildId).settings;
@@ -93,7 +88,6 @@ module.exports = {
     return g.counter;
   },
 
-  // --- panele (do automatycznego odświeżania statystyk) ---
   panels: (guildId) => guild(guildId).panels ?? [],
   addPanel(guildId, panel) {
     const g = guild(guildId);
@@ -107,7 +101,6 @@ module.exports = {
   },
   allGuildIds: () => Object.keys(state.guilds),
 
-  // --- czarna lista ---
   isBlacklisted: (guildId, userId) => guild(guildId).blacklist.some((b) => b.userId === userId),
   blacklist: (guildId) => guild(guildId).blacklist,
   addBlacklist(guildId, entry) {
@@ -124,7 +117,6 @@ module.exports = {
     return before !== g.blacklist.length;
   },
 
-  // --- tickety (kluczem jest ID kanału) ---
   createTicket(ticket) {
     state.tickets[ticket.channelId] = ticket;
     save();

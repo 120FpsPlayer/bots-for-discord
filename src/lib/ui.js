@@ -1,5 +1,3 @@
-// Wygląd wiadomości – nowe komponenty Discorda (Components V2):
-// kontenery z kolorowym paskiem, sekcje z miniaturkami, separatory.
 const {
   ActionRowBuilder,
   ButtonBuilder,
@@ -20,7 +18,7 @@ const config = require('./config');
 const db = require('./db');
 const { COLORS, PRIORITIES, pad, ts, duration, workingStatus, avgResponseTime } = require('./utils');
 
-const SPACER = ' '; // szeroka spacja do „kolumn" w tekście
+const SPACER = ' ';
 
 const text = (content) => new TextDisplayBuilder().setContent(content.slice(0, 4000));
 const divider = (large = false) =>
@@ -37,7 +35,6 @@ function section(content, thumbnailUrl) {
   return s;
 }
 
-/** Zamienia kontener w gotowy payload wiadomości. */
 function v2(container, { mentions } = {}) {
   return {
     components: [container],
@@ -46,7 +43,6 @@ function v2(container, { mentions } = {}) {
   };
 }
 
-/** Krótki komunikat w tickecie (przejęcie, dodanie osoby, zmiana priorytetu…). */
 function notice(color, content, { thumbnail, buttons, mentions } = {}) {
   const c = new ContainerBuilder().setAccentColor(color);
   if (thumbnail) c.addSectionComponents(section(content, thumbnail));
@@ -55,12 +51,9 @@ function notice(color, content, { thumbnail, buttons, mentions } = {}) {
   return v2(c, { mentions });
 }
 
-// ───────────────────────────── panel ─────────────────────────────
-
 function panelPayload(guild, style = 'buttons') {
   const p = config.panel;
   const types = config.ticketTypes;
-  // sekcje z przyciskami mieszczą się w limicie Discorda do 8 kategorii
   const useSections = style !== 'select' && types.length <= 8;
 
   const c = new ContainerBuilder().setAccentColor(COLORS.brand);
@@ -123,8 +116,6 @@ function panelPayload(guild, style = 'buttons') {
   return v2(c);
 }
 
-// ───────────────────────────── karta ticketu ─────────────────────────────
-
 function statusLine(ticket) {
   const p = PRIORITIES[ticket.priority] ?? PRIORITIES.normal;
   const status = ticket.status === 'open' ? '🟢 Otwarty' : '🔴 Zamknięty';
@@ -135,10 +126,6 @@ function statusLine(ticket) {
   );
 }
 
-/**
- * Główna, przypięta wiadomość ticketu. Przebudowywana przy każdej zmianie
- * (przejęcie, priorytet, dodanie osoby, przeniesienie).
- */
 function ticketCard(ticket, type, { ownerUser, ownerMember, pingRoles = [], previousCount = 0 } = {}) {
   const p = PRIORITIES[ticket.priority] ?? PRIORITIES.normal;
   const c = new ContainerBuilder().setAccentColor(p.color);
@@ -153,7 +140,6 @@ function ticketCard(ticket, type, { ownerUser, ownerMember, pingRoles = [], prev
 
   if (ticket.answers?.length) {
     c.addSeparatorComponents(divider());
-    // limit tekstu w wiadomości V2 to 4000 znaków – zostawiamy miejsce na resztę karty
     const budget = Math.floor(2400 / ticket.answers.length);
     const answers = ticket.answers
       .map((a) => {
@@ -224,8 +210,6 @@ function manageSelect(ticket) {
   }
   return new StringSelectMenuBuilder().setCustomId('ticket:manage').setPlaceholder('⚙️ Zarządzanie ticketem (support)').addOptions(options);
 }
-
-// ───────────────────────────── zamknięcie ─────────────────────────────
 
 function closedCard(ticket, actorId, { messageCount, transcriptUrl } = {}) {
   const c = new ContainerBuilder().setAccentColor(COLORS.danger);

@@ -27,7 +27,6 @@ const {
   sendLog,
 } = require('./utils');
 
-/** Błąd, którego treść można bezpiecznie pokazać użytkownikowi. */
 class UserError extends Error {}
 
 const OWNER_PERMS = ['ViewChannel', 'SendMessages', 'ReadMessageHistory', 'AttachFiles', 'EmbedLinks', 'AddReactions'];
@@ -35,16 +34,13 @@ const STAFF_PERMS = [...OWNER_PERMS, 'ManageMessages'];
 const BOT_PERMS = [...STAFF_PERMS, 'ManageChannels'];
 const allow = (perms) => Object.fromEntries(perms.map((p) => [p, true]));
 
-const creating = new Set(); // blokada podwójnego kliknięcia
-const lastOpened = new Map(); // anty-spam: guildId:userId -> timestamp
+const creating = new Set();
+const lastOpened = new Map();
 
 const D = config.defaults;
 
-// ───────────────────────────── panel ─────────────────────────────
-
 const buildPanel = (guild, style) => ui.panelPayload(guild, style);
 
-/** Odświeża wszystkie panele jednego serwera (statystyki, godziny pracy). */
 async function refreshGuildPanels(guild) {
   for (const panel of db.panels(guild.id)) {
     const channel = guild.channels.cache.get(panel.channelId);
@@ -54,7 +50,7 @@ async function refreshGuildPanels(guild) {
     }
     const message = await channel.messages.fetch(panel.messageId).catch((e) => (e.code === 10008 ? null : undefined));
     if (message === null) {
-      db.removePanel(guild.id, panel.messageId); // panel został usunięty
+      db.removePanel(guild.id, panel.messageId);
       continue;
     }
     if (!message) continue;
@@ -64,7 +60,6 @@ async function refreshGuildPanels(guild) {
   }
 }
 
-/** Odświeża panele na wszystkich serwerach (wywoływane cyklicznie). */
 async function refreshPanels(client) {
   for (const guildId of db.allGuildIds()) {
     const guild = client.guilds.cache.get(guildId);
@@ -72,10 +67,6 @@ async function refreshPanels(client) {
   }
 }
 
-/**
- * Odświeża panele chwilę po zmianie (otwarcie, zamknięcie, pierwsza odpowiedź).
- * Kilka zmian w krótkim czasie = jedno odświeżenie.
- */
 const panelTimers = new Map();
 function schedulePanelRefresh(guild) {
   if (!guild || panelTimers.has(guild.id)) return;
@@ -104,8 +95,6 @@ function buildForm(type, origin) {
   return modal;
 }
 
-// ───────────────────────────── otwieranie ─────────────────────────────
-
 function checkCanOpen(member) {
   const settings = db.settings(member.guild.id);
   const category = member.guild.channels.cache.get(settings.categoryId);
@@ -132,7 +121,6 @@ function checkCanOpen(member) {
   return null;
 }
 
-/** Buduje przypiętą kartę ticketu z aktualnymi danymi. */
 async function renderCard(guild, ticket, pingRoles = []) {
   const ownerUser = await guild.client.users.fetch(ticket.ownerId).catch(() => null);
   const ownerMember = await guild.members.fetch(ticket.ownerId).catch(() => null);
@@ -147,7 +135,7 @@ async function refreshControlMessage(channel, ticket) {
   const msg = await channel.messages.fetch(ticket.controlMessageId).catch(() => null);
   if (!msg) return;
   const payload = await renderCard(channel.guild, ticket);
-  delete payload.allowedMentions; // edycja i tak nikogo nie oznacza
+  delete payload.allowedMentions;
   await msg.edit(payload).catch((err) => console.warn('[karta] Nie udało się odświeżyć:', err.message));
 }
 
@@ -260,8 +248,6 @@ async function openTicket(member, type, answers = []) {
   }
 }
 
-// ───────────────────────────── transkrypt ─────────────────────────────
-
 async function archiveTranscript(channel, ticket, actor) {
   const type = config.getType(ticket.typeId);
   const { attachment, messageCount, participants } = await createTranscript(channel, ticket, type);
@@ -290,8 +276,6 @@ async function archiveTranscript(channel, ticket, actor) {
   }
   return { attachment, messageCount, url };
 }
-
-// ───────────────────────────── zamykanie ─────────────────────────────
 
 function ratingRow(channelId) {
   const labels = ['Słabo', 'Tak sobie', 'OK', 'Dobrze', 'Świetnie'];
@@ -329,7 +313,6 @@ async function closeTicket(channel, actor, reason = null) {
     console.error('[transkrypt] Błąd generowania:', err);
   }
 
-  // odbierz dostęp autorowi i dodanym osobom
   for (const id of [ticket.ownerId, ...ticket.participants]) {
     await channel.permissionOverwrites.edit(id, { ViewChannel: false, SendMessages: false }).catch(() => null);
   }
@@ -340,7 +323,6 @@ async function closeTicket(channel, actor, reason = null) {
   await refreshControlMessage(channel, ticket);
   await channel.send(ui.closedCard(ticket, actor.id, { messageCount: transcript?.messageCount, transcriptUrl: transcript?.url }));
 
-  // wiadomość prywatna do autora
   const owner = await channel.client.users.fetch(ticket.ownerId).catch(() => null);
   const type = config.getType(ticket.typeId);
   if (owner && (D.dmTranscript || D.askForRating)) {
@@ -366,7 +348,7 @@ async function closeTicket(channel, actor, reason = null) {
         files: D.dmTranscript && transcript ? [transcript.attachment] : [],
         components: D.askForRating ? [ratingRow(channel.id)] : [],
       })
-      .catch(() => null); // użytkownik ma zablokowane DM
+      .catch(() => null);
   }
 
   const links = [];
@@ -433,7 +415,6 @@ async function deleteTicket(channel, actor) {
   if (!ticket) throw new UserError('To nie jest kanał ticketu.');
   if (ticket.status === 'deleted') throw new UserError('Ten ticket jest już usuwany.');
 
-  // jeśli ticket nie był zamknięty, zachowaj transkrypt przed usunięciem
   if (ticket.status === 'open') {
     db.updateTicket(channel.id, { closedAt: Date.now(), closedBy: actor.id, closeReason: 'Usunięty bez zamykania' });
     await archiveTranscript(channel, ticket, actor).catch((err) => console.error('[transkrypt]', err));
@@ -464,8 +445,6 @@ async function deleteTicket(channel, actor) {
   setTimeout(() => channel.delete(`Ticket usunięty przez ${actor.user?.tag ?? actor.tag ?? actor.id}`).catch(() => null), delay * 1000);
 }
 
-// ───────────────────────────── prośba o zamknięcie ─────────────────────────────
-
 async function requestClose(channel, staff) {
   const ticket = requireOpen(channel);
   if (ticket.closeRequest) throw new UserError('Prośba o zamknięcie już czeka na odpowiedź autora.');
@@ -486,8 +465,6 @@ async function answerCloseRequest(channel, member, accepted, message) {
     await channel.send(ui.notice(COLORS.warning, `🔔 <@${by}>, autor nadal potrzebuje pomocy.`, { mentions: { users: [by] } }));
   }
 }
-
-// ───────────────────────────── zarządzanie ─────────────────────────────
 
 async function claimTicket(channel, member) {
   const ticket = requireOpen(channel);
@@ -605,7 +582,6 @@ async function renameTicket(channel, name) {
   if (!result.ok) throw new UserError(`Discord pozwala zmienić nazwę kanału 2 razy na 10 minut. Spróbuj za ~${result.wait} min.`);
 }
 
-/** Autor „woła" support – z cooldownem, żeby nie spamować. */
 async function pingStaff(channel, member) {
   const ticket = requireOpen(channel);
   if (ticket.ownerId !== member.id) throw new UserError('Tylko autor ticketu może wezwać support.');
@@ -664,8 +640,6 @@ function requireOpen(channel) {
   return ticket;
 }
 
-// ───────────────────────────── oceny ─────────────────────────────
-
 async function saveRating(client, channelId, userId, stars, comment) {
   const ticket = db.getTicket(channelId);
   if (!ticket || ticket.ownerId !== userId) throw new UserError('Nie możesz ocenić tego ticketu.');
@@ -690,12 +664,6 @@ async function saveRating(client, channelId, userId, stars, comment) {
   }
 }
 
-// ───────────────────────────── auto-zamykanie ─────────────────────────────
-
-/**
- * Zamyka tickety, w których zespół odpowiedział, a autor milczy zbyt długo.
- * Ticket czekający na odpowiedź zespołu NIGDY nie jest zamykany automatycznie.
- */
 async function runInactivityCheck(client) {
   const now = Date.now();
   for (const ticket of db.tickets((t) => t.status === 'open')) {

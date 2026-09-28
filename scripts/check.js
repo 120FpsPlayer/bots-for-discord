@@ -1,4 +1,3 @@
-// Szybka walidacja bez łączenia z Discordem: config, komendy, panel, karty i formularze.
 const path = require('node:path');
 process.chdir(path.join(__dirname, '..'));
 
@@ -10,7 +9,6 @@ const { buildForm } = require('../src/lib/tickets');
 const fakeGuild = { id: '0', name: 'Test', iconURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png' };
 const fakeUser = { createdAt: new Date(), displayAvatarURL: () => 'https://cdn.discordapp.com/embed/avatars/0.png' };
 
-/** Liczy wszystkie komponenty (Discord pozwala na max 40 w wiadomości V2). */
 function count(list) {
   let n = 0;
   for (const c of list) {

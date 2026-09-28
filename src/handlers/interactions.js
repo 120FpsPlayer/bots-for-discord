@@ -15,9 +15,6 @@ const { COLORS, embed, reply, replyError, isStaff, isAdmin, pad } = require('../
 
 const ephemeral = { flags: MessageFlags.Ephemeral };
 
-// ───────────────────────── otwieranie ticketu ─────────────────────────
-
-/** Resetuje wybór w panelu z listą rozwijaną (inaczej nie da się wybrać tej samej opcji ponownie). */
 function resetSelectPanel(interaction, origin) {
   if (origin !== 's' || !interaction.message) return;
   interaction.message.edit(t.buildPanel(interaction.guild, 'select')).catch(() => null);
@@ -73,8 +70,6 @@ async function handleForm(interaction, typeId, origin) {
   }));
   return createAndRespond(interaction, type, origin, answers);
 }
-
-// ───────────────────────── przyciski w tickecie ─────────────────────────
 
 function closeReasonModal() {
   return new ModalBuilder()
@@ -188,14 +183,12 @@ async function handleTicketButton(interaction, action) {
   }
 }
 
-// ───────────────────────── menu supportu ─────────────────────────
-
 async function handleManage(interaction) {
   const { channel, member } = interaction;
   const ticket = db.getTicket(channel.id);
   if (!ticket) return replyError(interaction, 'Ten kanał nie jest już ticketem.');
   if (!isStaff(member, config.getType(ticket.typeId))) {
-    await t.refreshControlMessage(channel, ticket); // zresetuj wybór w menu
+    await t.refreshControlMessage(channel, ticket);
     return replyError(interaction, 'To menu jest dostępne tylko dla zespołu supportu.');
   }
   await interaction.deferReply(ephemeral);
@@ -211,7 +204,7 @@ async function handleManage(interaction) {
     }
     if (kind === 'closereq') {
       await t.requestClose(channel, member);
-      await t.refreshControlMessage(channel, ticket); // przebudowa karty resetuje zaznaczenie w menu
+      await t.refreshControlMessage(channel, ticket);
       return await reply(interaction, 'Wysłano prośbę o zamknięcie do autora.');
     }
   } catch (err) {
@@ -237,8 +230,6 @@ async function handleAddUser(interaction) {
     throw err;
   }
 }
-
-// ───────────────────────── oceny (w DM) ─────────────────────────
 
 function ratingModal(channelId, stars) {
   return new ModalBuilder()
@@ -272,8 +263,6 @@ async function handleRatingSubmit(interaction, channelId, stars) {
   }
   return reply(interaction, { embeds: [thanks] });
 }
-
-// ───────────────────────── router ─────────────────────────
 
 module.exports = async function handleInteraction(interaction, commands) {
   try {

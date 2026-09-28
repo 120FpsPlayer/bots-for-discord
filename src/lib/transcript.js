@@ -1,4 +1,3 @@
-// Generuje samodzielny plik HTML wyglądający jak kanał Discorda.
 const { AttachmentBuilder } = require('discord.js');
 
 const esc = (s) =>
@@ -10,16 +9,12 @@ const esc = (s) =>
 
 function formatContent(text, message) {
   let html = esc(text);
-  // bloki kodu i kod w linii
   html = html.replace(/```(?:\w+\n)?([\s\S]*?)```/g, '<pre>$1</pre>');
   html = html.replace(/`([^`\n]+)`/g, '<code>$1</code>');
-  // pogrubienie, kursywa, przekreślenie
   html = html.replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
   html = html.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<i>$2</i>');
   html = html.replace(/~~([^~]+)~~/g, '<s>$1</s>');
-  // linki
   html = html.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
-  // wzmianki
   html = html.replace(/&lt;@!?(\d+)&gt;/g, (_, id) => {
     const u = message.mentions.users.get(id) ?? message.guild?.members.cache.get(id)?.user ?? message.client?.users.cache.get(id);
     const name = message.guild?.members.cache.get(id)?.displayName ?? u?.globalName ?? u?.username ?? id;
@@ -71,7 +66,6 @@ async function fetchAllMessages(channel) {
   return all.reverse();
 }
 
-/** Wyciąga tekst z nowych komponentów (Components V2) – karty bota. */
 function componentText(components = []) {
   const out = [];
   const walk = (list) => {
@@ -91,7 +85,6 @@ const time = (d) => d.toLocaleTimeString('pl-PL', { ...TZ, hour: '2-digit', minu
 const full = (d) => d.toLocaleString('pl-PL', TZ);
 
 function markdown(textRaw, message) {
-  // nagłówki, podpisy i cytaty w stylu Discorda (każdy do końca linii)
   const line = (prefix, cls) => new RegExp(`(^|<br>)${prefix} (.*?)(?=<br>|$)`, 'g');
   return formatContent(textRaw, message)
     .replace(line('###', ''), '$1<span class="h3">$2</span>')

@@ -47,7 +47,6 @@ module.exports = {
         { name: 'Śr. czas rozwiązania', value: resolutions.length ? duration(avg(resolutions)) : '—', inline: true },
       );
 
-    // podział na kategorie
     const perType = config.ticketTypes
       .map((ty) => [ty, tickets.filter((x) => x.typeId === ty.id).length])
       .filter(([, n]) => n > 0)
@@ -55,7 +54,6 @@ module.exports = {
       .map(([ty, n]) => `${ty.emoji ?? '🎫'} ${ty.label} – **${n}** ${bar(n, tickets.length)}`);
     if (perType.length) e.addFields({ name: '📂 Kategorie', value: perType.join('\n') });
 
-    // rozkład ocen
     if (ratings.length) {
       const dist = [5, 4, 3, 2, 1].map((n) => {
         const c = ratings.filter((r) => r === n).length;
@@ -64,7 +62,6 @@ module.exports = {
       e.addFields({ name: '⭐ Rozkład ocen', value: dist.join('\n'), inline: true });
     }
 
-    // aktywność tygodniowa
     const last7 = db.tickets((x) => x.guildId === interaction.guild.id && x.createdAt >= Date.now() - 7 * 86_400_000).length;
     const prev7 = db.tickets(
       (x) => x.guildId === interaction.guild.id && x.createdAt >= Date.now() - 14 * 86_400_000 && x.createdAt < Date.now() - 7 * 86_400_000,
