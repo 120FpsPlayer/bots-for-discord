@@ -8,9 +8,10 @@ const path = require('node:path');
  * Obsługuje komentarze (#), cudzysłowy oraz wartości z "=" w środku.
  * Zmienne ustawione już w systemie mają pierwszeństwo.
  */
-function loadEnvFile(file = path.join(__dirname, '..', '.env')) {
+function loadEnvFile(file) {
   if (!fs.existsSync(file)) return false;
-  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  // Notatnik w Windows potrafi zapisać plik z BOM – usuwamy go, żeby nie zepsuć pierwszej zmiennej.
+  const lines = fs.readFileSync(file, 'utf8').replace(/^﻿/, '').split(/\r?\n/);
   for (const raw of lines) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) continue;
@@ -24,12 +25,18 @@ function loadEnvFile(file = path.join(__dirname, '..', '.env')) {
       const hash = value.indexOf(' #');
       if (hash !== -1) value = value.slice(0, hash).trim();
     }
-    if (process.env[key] === undefined) process.env[key] = value;
+    if (!process.env[key]) process.env[key] = value;
   }
   return true;
 }
 
-loadEnvFile();
+/**
+ * Szukamy .env obok index.js (folder bota) oraz w katalogu, z którego uruchomiono bota –
+ * na hostingach (Wispbyte/Pterodactyl) to /home/container, nawet gdy bot leży w podfolderze.
+ */
+const PROJECT_DIR = path.join(__dirname, '..');
+const ENV_CANDIDATES = [...new Set([path.join(PROJECT_DIR, '.env'), path.join(process.cwd(), '.env')])];
+const loadedEnvFiles = ENV_CANDIDATES.filter((file) => loadEnvFile(file));
 
 function intFromEnv(name, fallback, min, max) {
   const n = Number.parseInt(process.env[name], 10);
@@ -50,7 +57,9 @@ const config = {
 function validateConfig() {
   const problems = [];
   if (!config.token || config.token === 'TWOJ_TOKEN_BOTA') {
-    problems.push('Brak tokenu bota. Uzupełnij DISCORD_TOKEN w pliku .env (skopiuj .env.example jako .env).');
+    problems.push(loadedEnvFiles.length
+      ? `Brak tokenu bota. Uzupełnij DISCORD_TOKEN w pliku: ${loadedEnvFiles.join(', ')}`
+      : `Brak tokenu bota i nie znaleziono pliku .env. Utwórz plik .env (wzór: .env.example) w jednym z miejsc: ${ENV_CANDIDATES.join(' lub ')}`);
   } else if (config.token.split('.').length !== 3) {
     problems.push('DISCORD_TOKEN wygląda na niepoprawny – skopiuj go ponownie z Discord Developer Portal (zakładka Bot → Reset Token).');
   }
@@ -60,4 +69,4 @@ function validateConfig() {
   return problems;
 }
 
-module.exports = { config, validateConfig, loadEnvFile };
+module.exports = { config, validateConfig, loadEnvFile, loadedEnvFiles };

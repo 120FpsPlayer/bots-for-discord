@@ -20,4 +20,4 @@ if [ ! -d node_modules ]; then
 fi
 
 echo "[i] Uruchamiam bota... (Ctrl+C, aby wyłączyć)"
-exec node src/index.js
+exec node index.js

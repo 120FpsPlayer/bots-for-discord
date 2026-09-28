@@ -29,5 +29,5 @@ if not exist "node_modules" (
 )
 
 echo [i] Uruchamiam bota... (zamknij to okno, aby go wylaczyc)
-node src/index.js
+node index.js
 pause

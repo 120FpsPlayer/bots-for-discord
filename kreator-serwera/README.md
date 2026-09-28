@@ -60,8 +60,20 @@ bot tworzy wszystko sam i pokazuje postęp na żywo.
 - **Ręcznie:**
   ```bash
   npm install
-  npm start
+  node index.js
   ```
+
+### 🌐 Hosting (Wispbyte, Pterodactyl, inne panele Node.js)
+1. Wgraj pliki bota tak, żeby **`index.js` i `package.json` leżały bezpośrednio w katalogu głównym** (`/home/container`),
+   a nie w podfolderze – najprościej wgrać ZIP w wersji „hosting” i kliknąć **Unarchive**.
+2. W menedżerze plików utwórz plik **`.env`** (obok `index.js`) z linijką `DISCORD_TOKEN=twój_token`.
+3. W zakładce **Startup** ustaw plik startowy (*JS file / Main file*) na **`index.js`**.
+   ⚠️ Nie ustawiaj tam `start.sh` ani `start.bat` – to skrypty dla komputera, nie pliki JavaScript.
+4. Wersja Node.js: **18.17 lub nowsza** (obraz `nodejs_18`, `nodejs_19`, `nodejs_20`… – wszystkie działają).
+5. Uruchom serwer. Jeśli panel nie zainstaluje zależności sam, `index.js` zrobi to przy pierwszym starcie.
+
+> Jeśli wolisz trzymać bota w podfolderze (np. `kreator-serwera/`), ustaw plik startowy na `kreator-serwera/index.js` –
+> bot sam zainstaluje zależności, a `.env` może leżeć w podfolderze albo w `/home/container`.
 
 W konsoli pojawi się **link zaproszenia** – otwórz go i dodaj bota na swój serwer.
 Link zawiera uprawnienie **Administrator** (`permissions=8`), które jest wymagane do tworzenia ról z uprawnieniami i nadpisań kanałów.
@@ -137,6 +149,8 @@ roli zarządzanej przez integrację ani roli powyżej bota – nawet gdyby ktoś
 | Kanały ogłoszeń / scena są zwykłymi kanałami | Tryb Społeczności był wyłączony lub Discord go odrzucił – włącz go w kroku 13. |
 | Przyciski weryfikacji/ról/ticketów nie działają | Bot musi być **online** – te panele obsługuje ten sam bot. |
 | „Zbyt szybko zmieniasz role” | Ochrona przed spamem – odczekaj 3 sekundy. |
+| Hosting: `SyntaxError: Invalid or unexpected token` w `start.sh` | Jako plik startowy ustaw **`index.js`**, a nie `start.sh`. |
+| Hosting: `Cannot find module 'discord.js'` | Ustaw plik startowy na `index.js` – doinstaluje zależności sam – albo wgraj pliki do katalogu głównego. |
 | Panel przestał się odświeżać przy bardzo dużym serwerze | Budowa trwa dalej w tle; podsumowanie trafi na kanał ekipy i w wiadomości prywatnej. |
 
 ---
@@ -145,8 +159,9 @@ roli zarządzanej przez integrację ani roli powyżej bota – nawet gdyby ktoś
 
 ```
 kreator-serwera/
+├── index.js                    # plik startowy (ustaw go na hostingu)
 ├── src/
-│   ├── index.js                # start bota, rejestracja /stworz, obsługa interakcji
+│   ├── index.js                # klient Discord, rejestracja /stworz, obsługa interakcji
 │   ├── config.js               # wczytywanie .env i walidacja konfiguracji
 │   ├── commands/stworz.js      # definicja jedynej komendy
 │   ├── wizard/                 # panel kreatora
