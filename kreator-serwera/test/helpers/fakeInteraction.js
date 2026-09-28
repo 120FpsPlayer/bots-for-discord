@@ -1,7 +1,7 @@
 'use strict';
 
 const { PermissionsBitField } = require('discord.js');
-const { validateMessage } = require('./fakeDiscord');
+const { validateMessage, assertComponentEmojis } = require('./fakeDiscord');
 
 /**
  * Atrapa interakcji Discord dla kreatora. Każda odpowiedź (reply/update/showModal)
@@ -13,6 +13,7 @@ function validateModal(modal) {
   if (!json.custom_id || json.custom_id.length > 100) throw new Error('modal custom_id');
   if (!json.title || json.title.length > 45) throw new Error(`modal title: ${json.title}`);
   if (json.components.length < 1 || json.components.length > 5) throw new Error('modal components 1-5');
+  assertComponentEmojis(json.components, 'modal.components');
   for (const label of json.components) {
     if (label.label && label.label.length > 45) throw new Error(`label too long: ${label.label}`);
     if (label.description && label.description.length > 100) throw new Error('label description too long');

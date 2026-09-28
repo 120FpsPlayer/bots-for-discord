@@ -18,6 +18,36 @@ function apiError(code, message) {
   return err;
 }
 
+/**
+ * Discord przyjmuje w komponentach tylko prawdziwe emoji Unicode (lista RGI) albo emoji serwera (z id).
+ * Znaki typu ✦ czy 〔 wyglądają jak emoji, ale Discord odrzuca je błędem COMPONENT_INVALID_EMOJI.
+ */
+let RGI_EMOJI = null;
+try {
+  RGI_EMOJI = new RegExp('^\\p{RGI_Emoji}$', 'v');
+} catch {
+  RGI_EMOJI = null; // starszy Node bez flagi „v” – sprawdzanie emoji pominięte
+}
+
+function assertEmoji(emoji, where) {
+  if (!emoji || emoji.id || !RGI_EMOJI) return;
+  const name = typeof emoji === 'string' ? emoji : emoji.name;
+  if (!RGI_EMOJI.test(name)) {
+    throw apiError(50035, `${where}.emoji.name[COMPONENT_INVALID_EMOJI]: Invalid emoji ${JSON.stringify(name)}`);
+  }
+}
+
+/** Sprawdza emoji we wszystkich komponentach (przyciski, menu i ich opcje, także w modalach). */
+function assertComponentEmojis(components, where = 'components') {
+  (components || []).forEach((c, i) => {
+    const path = `${where}[${i}]`;
+    assertEmoji(c.emoji, path);
+    (c.options || []).forEach((o, j) => assertEmoji(o.emoji, `${path}.options[${j}]`));
+    if (c.components) assertComponentEmojis(c.components, `${path}.components`);
+    if (c.component) assertComponentEmojis([c.component], `${path}.component`);
+  });
+}
+
 function embedLength(e) {
   const d = typeof e.toJSON === 'function' ? e.toJSON() : e;
   let n = (d.title?.length || 0) + (d.description?.length || 0) + (d.footer?.text?.length || 0) + (d.author?.name?.length || 0);
@@ -43,6 +73,7 @@ function validateMessage(body) {
   if (total > 6000) throw apiError(50035, `embeds total > 6000 (${total})`);
   const rows = (body.components || []).map((r) => (typeof r.toJSON === 'function' ? r.toJSON() : r));
   if (rows.length > 5) throw apiError(50035, 'too many rows');
+  assertComponentEmojis(rows);
   for (const row of rows) {
     for (const c of row.components) {
       if (c.custom_id && c.custom_id.length > 100) throw apiError(50035, 'custom_id > 100');
@@ -243,6 +274,7 @@ class FakeGuild {
         if (!data.name || data.name.length > 100) throw apiError(50035, `role name invalid: ${data.name}`);
         if (this.cache.size >= 250) throw apiError(30005, 'Maximum number of guild roles reached (250)');
         if (data.unicodeEmoji && !guild.features.includes('ROLE_ICONS')) throw apiError(50101, 'role icons require boosts');
+        if (data.unicodeEmoji) assertEmoji(data.unicodeEmoji, 'unicode_emoji');
         for (const r of this.cache.values()) if (r.id !== guild.id && r.position >= 1) r.position += 1;
         const role = new FakeRole(guild, { ...data, position: 1 });
         this.cache.set(role.id, role);
@@ -283,11 +315,15 @@ class FakeGuild {
           if (siblings >= 50) throw apiError(50035, 'category full');
         }
         if (data.topic && data.topic.length > (data.type === ChannelType.GuildForum ? 4096 : 1024)) throw apiError(50035, 'topic too long');
+        assertEmoji(data.defaultReactionEmoji, 'default_reaction_emoji');
         if ((data.rateLimitPerUser ?? 0) > 21600) throw apiError(50035, 'slowmode too long');
         if ((data.userLimit ?? 0) > 99) throw apiError(50035, 'user limit too high');
         if (data.availableTags) {
           if (data.availableTags.length > 20) throw apiError(50035, 'too many tags');
-          for (const t of data.availableTags) if (!t.name || t.name.length > 20) throw apiError(50035, `tag name: ${t.name}`);
+          for (const t of data.availableTags) {
+            if (!t.name || t.name.length > 20) throw apiError(50035, `tag name: ${t.name}`);
+            assertEmoji(t.emoji, 'available_tags');
+          }
         }
         for (const o of data.permissionOverwrites || []) {
           const known = o.id === guild.id || guild.roles.cache.has(o.id) || o.id === 'bot' || o.type === OverwriteType.Member;
@@ -380,10 +416,11 @@ class FakeGuild {
   async editWelcomeScreen(data) {
     if (!this.features.includes('COMMUNITY')) throw apiError(50101, 'community required');
     if (data.welcomeChannels.length > 5) throw apiError(50035, 'too many welcome channels');
+    for (const w of data.welcomeChannels) assertEmoji(w.emoji, 'welcome_channels');
     if (data.description && data.description.length > 140) throw apiError(50035, 'welcome description too long');
     this.welcomeScreen = data;
     return data;
   }
 }
 
-module.exports = { FakeGuild, FakeMember, FakeChannel, FakeRole, validateMessage, apiError };
+module.exports = { FakeGuild, FakeMember, FakeChannel, FakeRole, validateMessage, assertComponentEmojis, apiError };

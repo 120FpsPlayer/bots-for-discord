@@ -94,7 +94,7 @@ const CATEGORY_STYLES = {
   },
   bracket: {
     label: 'Nawiasy',
-    emoji: '〔',
+    emoji: '🔲',
     description: '〔 📌 INFORMACJE 〕',
     format: (emoji, name) => `〔 ${emoji} ${name} 〕`,
   },
@@ -106,7 +106,7 @@ const CATEGORY_STYLES = {
   },
   stars: {
     label: 'Gwiazdki',
-    emoji: '✦',
+    emoji: '✴️',
     description: '✦ 📌 INFORMACJE ✦',
     format: (emoji, name) => `✦ ${emoji} ${name} ✦`,
   },

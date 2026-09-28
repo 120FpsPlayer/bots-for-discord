@@ -229,7 +229,7 @@ const styleStep = {
         }),
         selectRow(cid(s, 's', 'category'), {
           placeholder: 'Styl nazw kategorii',
-          options: opts(Object.entries(CATEGORY_STYLES), a.style.category, (d) => ({ label: d.label, description: d.description, emoji: d.emoji === '〔' ? '🔲' : d.emoji })),
+          options: opts(Object.entries(CATEGORY_STYLES), a.style.category, (d) => ({ label: d.label, description: d.description, emoji: d.emoji })),
         }),
         selectRow(cid(s, 's', 'palette'), {
           placeholder: 'Paleta kolorów ról',
