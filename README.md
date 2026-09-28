@@ -36,8 +36,7 @@ Kompletny bot do obsługi zgłoszeń napisany w **discord.js v14**. Cały interf
    ```bash
    npm install
    cp .env.example .env     # uzupełnij DISCORD_TOKEN, CLIENT_ID oraz role (patrz niżej)
-   npm run deploy           # rejestracja komend slash
-   npm start
+   npm start                # komendy rejestrują się automatycznie przy starcie
    ```
 5. Na serwerze:
    ```
@@ -47,6 +46,14 @@ Kompletny bot do obsługi zgłoszeń napisany w **discord.js v14**. Cały interf
    Gotowe! 🎉
 
 > 💡 Rola bota musi być **wyżej** na liście ról niż role, którym nadaje uprawnienia.
+
+## ☁️ Hosting (Wispbyte, Pterodactyl itp.)
+
+1. Wgraj wszystkie pliki (bez `node_modules`) do panelu – np. rozpakuj ZIP w menedżerze plików.
+2. Utwórz plik **`.env`** (skopiuj `.env.example`) i uzupełnij token oraz role.
+3. Jako **plik startowy** (startup file / main file) wskaż: **`index.js`**.
+4. Uruchom serwer – panel sam zrobi `npm install`, a bot **sam zarejestruje komendy** przy starcie
+   (nie trzeba wpisywać `npm run deploy`). Ustaw `GUILD_ID`, żeby komendy pojawiły się od razu.
 
 ## 🔐 Uprawnienia i role – plik `.env`
 
@@ -142,8 +149,9 @@ Po zmianie `config.json` zrestartuj bota i wyślij panel ponownie (`/panel`). `n
 ## 🗂️ Struktura
 
 ```
+index.js                  # plik startowy (dla hostingu)
 src/
-├── index.js              # start bota, zdarzenia
+├── index.js              # start bota, zdarzenia (uruchamiany przez /index.js)
 ├── deploy-commands.js    # rejestracja komend
 ├── commands/             # /setup, /panel, /ticket, /blacklist, /statystyki
 ├── handlers/interactions.js  # przyciski, listy, formularze

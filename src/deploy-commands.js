@@ -1,5 +1,5 @@
 // Rejestruje komendy slash. Uruchom po każdej zmianie komend: npm run deploy
-require('dotenv').config();
+require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
 const { REST, Routes } = require('discord.js');
 const loadCommands = require('./commands');
 

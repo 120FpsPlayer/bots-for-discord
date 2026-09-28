@@ -1,4 +1,4 @@
-require('dotenv').config();
+require('dotenv').config({ path: require('node:path').join(__dirname, '..', '.env') });
 const { Client, Events, GatewayIntentBits, ActivityType, Partials } = require('discord.js');
 const config = require('./lib/config');
 const db = require('./lib/db');
@@ -20,8 +20,22 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-client.once(Events.ClientReady, (c) => {
+client.once(Events.ClientReady, async (c) => {
   console.log(`✅ Zalogowano jako ${c.user.tag} · serwery: ${c.guilds.cache.size} · komendy: ${commands.size}`);
+
+  // automatyczna rejestracja komend slash (wyłącz: AUTO_DEPLOY_COMMANDS=false)
+  if (!['false', '0', 'nie'].includes(String(process.env.AUTO_DEPLOY_COMMANDS).toLowerCase())) {
+    const body = [...commands.values()].map((cmd) => cmd.data.toJSON());
+    const guildId = process.env.GUILD_ID?.trim();
+    try {
+      if (guildId) await c.application.commands.set(body, guildId);
+      else await c.application.commands.set(body);
+      console.log(`✅ Zarejestrowano komendy ${guildId ? `na serwerze ${guildId}` : 'globalnie (mogą pojawić się po ~1h)'}.`);
+    } catch (err) {
+      console.error('❌ Nie udało się zarejestrować komend:', err.message);
+    }
+  }
+
   c.user.setActivity({ name: `🎫 ${config.brand.name ?? 'Tickety'}`, type: ActivityType.Watching });
 
   const tick = () => runInactivityCheck(c).catch((err) => console.error('[auto-close]', err));
