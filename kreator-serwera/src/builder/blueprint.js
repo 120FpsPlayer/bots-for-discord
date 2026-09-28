@@ -26,11 +26,19 @@ const TEXT_KINDS = new Set(['text', 'announcement', 'forum']);
 const VOICE_KINDS = new Set(['voice', 'stage']);
 
 const POST_PANEL = {
-  rules: 'rules', info: 'info', verify: 'verify', selfroles: 'selfroles', tickets: 'tickets',
+  rules: 'rules', info: 'info', verify: 'verify', rolesInfo: 'rolesInfo',
   welcomeChat: 'welcomeChat', staffGuide: 'staffGuide', faq: 'faq',
 };
 
 const HOISTED_LEVELS = new Set(['owner', 'admin', 'mod', 'helper', 'trial']);
+
+/** Sekcja (do ustawień dostępu) dla klucza kategorii; własne kategorie mają dostęp ustawiany osobno. */
+function sectionOfCategory(key) {
+  const base = String(key).split('#')[0];
+  if (base === 'items' || base.startsWith('item:')) return 'items';
+  if (base.startsWith('custom')) return null;
+  return base;
+}
 
 function sizeAtLeast(size, min) {
   return SIZE_ORDER.indexOf(size) >= SIZE_ORDER.indexOf(min || 'small');
@@ -259,6 +267,7 @@ function buildBlueprint(input, env = {}) {
         hoist: false, mentionable: false, permissions: [], separator: true,
       });
     }
+    for (const r of s.roles) r.section = s.key;
     roles.push(...s.roles);
   }
   for (const r of roles) delete r.rank;
@@ -476,10 +485,24 @@ function buildBlueprint(input, env = {}) {
     }
   }
 
-  // Nazwy, kolejność wyświetlania i uprawnienia
+  // Nazwy, kolejność wyświetlania i uprawnienia.
+  // Każdy kanał dostaje zalecane nadpisania wynikające z profilu; jeśli w kroku „Dostęp do kanałów”
+  // zmieniono ustawienia sekcji, kanały tej sekcji dostają nadpisania z wybranej pary (kto widzi, kto pisze).
   const overwriteOpts = { gate, filesOff };
+  const accessOverrides = answers.channelAccess || {};
   const finalCategories = splitCategories.map((cat) => {
-    const catOverwrites = P.profileOverwrites(cat.profile, g, { ...overwriteOpts, access: cat.access });
+    const section = sectionOfCategory(cat.key);
+    const ov = section ? accessOverrides[section] : null;
+    const ovView = ov && P.VIEW_OPTIONS[ov.view] ? ov.view : null;
+    const ovWrite = ov && P.WRITE_OPTIONS[ov.write] ? ov.write : null;
+    const overridden = Boolean(ovView || ovWrite);
+
+    const baseCatOverwrites = P.profileOverwrites(cat.profile, g, { ...overwriteOpts, access: cat.access });
+    let catOverwrites = baseCatOverwrites;
+    if (overridden && cat.profile !== 'private') {
+      const d = P.defaultAccess('public', cat.profile, gate);
+      catOverwrites = P.accessOverwrites(ovView || d.view, ovWrite || d.write, g, { gate });
+    }
     const display = [
       ...cat.channels.filter((c) => TEXT_KINDS.has(c.kind)),
       ...cat.channels.filter((c) => VOICE_KINDS.has(c.kind)),
@@ -490,13 +513,25 @@ function buildBlueprint(input, env = {}) {
         ? N.formatVoiceChannel(answers.style.channel, c.emoji, c.base, pos)
         : N.formatTextChannel(answers.style.channel, c.emoji, c.base, pos);
       const own = P.profileOverwrites(c.profile, g, { ...overwriteOpts, posters: c.posters, access: c.access });
-      const overwrites = P.VISIBILITY_PROFILES.has(c.profile) ? P.mergeOverwrites(own) : P.mergeOverwrites(catOverwrites, own);
-      const out = { ...c, name, overwrites };
+      let overwrites = P.VISIBILITY_PROFILES.has(c.profile) ? P.mergeOverwrites(own) : P.mergeOverwrites(baseCatOverwrites, own);
+      let access = { ...P.defaultAccess(c.profile, cat.profile, gate), custom: false };
+      if (overridden && !P.isProtectedChannel(c.profile, gate)) {
+        access = {
+          view: ovView || access.view,
+          // AFK i „cicha nauka” zawsze zostają bez mówienia – to ich jedyny sens.
+          write: ['afk', 'quiet'].includes(c.profile) ? access.write : ovWrite || access.write,
+          custom: true,
+        };
+        overwrites = P.accessOverwrites(access.view, access.write, g, { kind: c.kind, posters: c.posters, gate });
+        if (c.profile === 'media' && filesOff) overwrites = P.mergeOverwrites(overwrites, [{ target: '@everyone', allow: ['AttachFiles', 'EmbedLinks'], deny: [] }]);
+      }
+      const out = { ...c, name, overwrites, access };
       delete out.base;
       return out;
     });
     return {
       key: cat.key,
+      section,
       name: N.formatCategory(answers.style.category, cat.emoji, cat.label),
       overwrites: P.mergeOverwrites(catOverwrites),
       channels,
@@ -508,7 +543,6 @@ function buildBlueprint(input, env = {}) {
   const hasChannel = (key) => channelKeys.has(key);
 
   // ── WIADOMOŚCI ────────────────────────────────────────────────────
-  const selfRoles = roles.filter((r) => r.self);
   const messages = [];
   for (const channel of allChannels) {
     if (!channel.post) continue;
@@ -521,21 +555,8 @@ function buildBlueprint(input, env = {}) {
         continue;
       }
     }
-    if (channel.post === 'selfroles' && !selfRoles.length) {
-      warnings.push('Kanał wyboru ról nie ma żadnych ról do wybrania – panel ról pominięto.');
-      continue;
-    }
     messages.push({ channel: channel.key, kind: channel.post });
   }
-  if (panels.has('selfroles') && selfRoles.length && !hasChannel('selfroles')) {
-    warnings.push('Masz role do samodzielnego wyboru, ale bez modułu „Wybór ról” nie będzie panelu, w którym można je wybrać.');
-  }
-
-  // Wsparcie ticketów – kogo bot oznaczy w nowym zgłoszeniu
-  const supportOrder = ['helper', 'mod', 'admin', 'trial'];
-  const ticketSupport = supportOrder
-    .flatMap((level) => roles.filter((r) => r.staff && r.level === level).map((r) => r.key))
-    .slice(0, 4);
 
   // ── AUTOMOD ───────────────────────────────────────────────────────
   const automod = [];
@@ -603,11 +624,10 @@ function buildBlueprint(input, env = {}) {
       ? [['verify', '✅', T('Zweryfikuj się', 'Verify yourself')], ['rules', '📜', T('Przeczytaj zasady', 'Read the rules')]]
       : [
         ['rules', '📜', T('Przeczytaj zasady', 'Read the rules')],
-        ['selfroles', '🎭', T('Wybierz swoje role', 'Pick your roles')],
+        ['roleinfo', '🎭', T('Poznaj role serwera', 'Learn the server roles')],
         ['general', '💬', T('Przywitaj się z nami', 'Say hi to everyone')],
         ['announcements', '📢', T('Bądź na bieżąco', 'Stay up to date')],
         ['introductions', '🙋', T('Przedstaw się', 'Introduce yourself')],
-        ['ticketPanel', '🎫', T('Potrzebujesz pomocy?', 'Need help?')],
       ];
     communitySettings = {
       rulesChannel,
@@ -647,7 +667,6 @@ function buildBlueprint(input, env = {}) {
   const stats = {
     roles: roles.length,
     separators: roles.filter((r) => r.separator).length,
-    selfRoles: selfRoles.length,
     categories: finalCategories.length,
     channels: allChannels.length,
     text: allChannels.filter((c) => TEXT_KINDS.has(c.kind)).length,
@@ -655,6 +674,10 @@ function buildBlueprint(input, env = {}) {
     forums: allChannels.filter((c) => c.kind === 'forum').length,
     messages: messages.length,
     automod: automod.length,
+    hidden: allChannels.filter((c) => !['members', 'unverified'].includes(c.access.view)).length,
+    readonly: allChannels.filter((c) => ['members', 'unverified'].includes(c.access.view) && c.access.write !== 'all').length,
+    open: allChannels.filter((c) => ['members', 'unverified'].includes(c.access.view) && c.access.write === 'all').length,
+    overwrites: finalCategories.reduce((n, c) => n + c.overwrites.length + c.channels.reduce((m, ch) => m + ch.overwrites.length, 0), 0),
   };
   const totalChannels = stats.categories + stats.channels;
   const wipe = answers.mode?.type === 'wipe';
@@ -698,7 +721,6 @@ function buildBlueprint(input, env = {}) {
     categories: finalCategories,
     messages,
     automod,
-    ticketSupport,
     assign: {
       enabled: answers.mode?.assign !== false,
       owner: has('owner') ? 'owner' : null,
@@ -713,4 +735,4 @@ function buildBlueprint(input, env = {}) {
   };
 }
 
-module.exports = { buildBlueprint, LIMITS, TEXT_KINDS, VOICE_KINDS };
+module.exports = { buildBlueprint, sectionOfCategory, LIMITS, TEXT_KINDS, VOICE_KINDS };

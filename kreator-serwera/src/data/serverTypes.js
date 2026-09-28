@@ -20,14 +20,13 @@ const { ch } = require('./modules');
  *  extras           – dodatkowe kanały do wyboru,
  *  infoFields       – dodatkowe pytania (IP serwera, linki…) używane w wiadomościach,
  *  cards            – karty informacyjne publikowane w kanałach (post: 'card:<klucz>'),
- *  rules            – dodatkowy paragraf regulaminu,
- *  ticket           – własne teksty panelu ticketów.
+ *  rules            – dodatkowy paragraf regulaminu.
  */
 
 const BASE_MODULES = [
-  'verification', 'rules', 'info', 'selfroles', 'welcome', 'announcements', 'events', 'giveaways',
+  'verification', 'rules', 'info', 'roleinfo', 'welcome', 'announcements', 'events', 'giveaways',
   'general', 'media', 'memes', 'offtopic', 'botcmds', 'suggestions',
-  'voice', 'afk', 'tickets', 'staff', 'logs',
+  'voice', 'afk', 'staff', 'logs',
 ];
 
 const SERVER_TYPES = {
@@ -124,7 +123,7 @@ const SERVER_TYPES = {
       },
       recruitment: {
         title: L('📝 Rekrutacja do ekipy', '📝 Staff applications'),
-        description: L('Chcesz dołączyć do ekipy? Sprawdź wymagania i otwórz ticket z podaniem.', 'Want to join the staff? Check requirements and open a ticket.'),
+        description: L('Chcesz dołączyć do ekipy? Sprawdź wymagania i wyślij podanie do administracji.', 'Want to join the staff? Check the requirements and send your application to the staff.'),
         fields: [
           { name: L('✅ Wymagania', '✅ Requirements'), value: L('• ukończone 15 lat\n• czysta historia kar\n• aktywność min. 2h dziennie\n• kultura osobista i cierpliwość', '• 15+ years old\n• clean punishment history\n• 2h+ daily activity\n• patience and good manners') },
           { name: L('📄 Podanie powinno zawierać', '📄 Your application should include'), value: L('Nick, wiek, doświadczenie, dlaczego Ty, ile czasu możesz poświęcić.', 'Nick, age, experience, why you, available time.') },
@@ -294,7 +293,7 @@ const SERVER_TYPES = {
     description: 'Przedmioty, zadania domowe, materiały, sprawdziany',
     memberName: L('Uczeń', 'Student'), memberEmoji: '🎒',
     special: { name: L('Nauka', 'Learning'), emoji: '📚' }, specialPosition: 'afterNews',
-    modules: ['rules', 'info', 'selfroles', 'welcome', 'announcements', 'events', 'general', 'media', 'memes', 'offtopic', 'botcmds', 'voice', 'afk', 'staff', 'logs'],
+    modules: ['rules', 'info', 'roleinfo', 'welcome', 'announcements', 'events', 'general', 'media', 'memes', 'offtopic', 'botcmds', 'voice', 'afk', 'staff', 'logs'],
     staffExtras: [
       { key: 'teacher', name: L('Nauczyciel', 'Teacher'), emoji: '🍎', level: 'mod', color: 'management', description: 'Prowadzi zajęcia i moderuje', default: true },
       { key: 'president', name: L('Przewodniczący', 'Class President'), emoji: '🎖️', level: 'none', color: 'func', description: 'Przedstawiciel uczniów', default: true },
@@ -555,10 +554,10 @@ const SERVER_TYPES = {
 
   shop: {
     label: 'Sklep / Usługi / Handel', emoji: '🛒',
-    description: 'Oferta, cennik, zamówienia przez tickety, opinie',
+    description: 'Oferta, cennik, kanał zamówień, opinie',
     memberName: L('Użytkownik', 'Member'), memberEmoji: '👤',
     special: { name: L('Sklep', 'Shop'), emoji: '🛒' }, specialPosition: 'afterNews',
-    modules: ['verification', 'rules', 'info', 'faq', 'selfroles', 'welcome', 'announcements', 'giveaways', 'general', 'botcmds', 'tickets', 'voice', 'staff', 'logs'],
+    modules: ['verification', 'rules', 'info', 'faq', 'roleinfo', 'welcome', 'announcements', 'giveaways', 'general', 'botcmds', 'voice', 'staff', 'logs'],
     never: ['memes', 'counting', 'qotd', 'nsfw'],
     staffExtras: [
       { key: 'seller', name: L('Sprzedawca', 'Seller'), emoji: '💼', level: 'helper', color: 'staffExtra', description: 'Realizuje zamówienia', default: true },
@@ -575,12 +574,13 @@ const SERVER_TYPES = {
       placeholder: 'Konta, Grafiki, Boty Discord, Strony WWW, Usługi',
       defaults: ['Grafiki', 'Boty Discord', 'Strony WWW'],
       emoji: '🏷️', roleEmoji: '🏷️', category: L('Oferta', 'Offer'), categoryEmoji: '🏷️',
-      topic: L('Oferta: {item}. Zamówienia składaj przez ticket.', 'Offer: {item}. Order via ticket.'),
+      topic: L('Oferta: {item}. Zamówienia składaj na kanale zamówień.', 'Offer: {item}. Place orders in the orders channel.'),
       extra: null, voice: null,
       options: ['text'], layout: 'shared', roleMentionable: false, readonly: true, posters: ['seller'],
     },
     extras: [
       ch('howToBuy', '📦', L('jak-kupić', 'how-to-buy'), L('Instrukcja składania zamówień.', 'How to order.'), { default: true, profile: 'readonly', post: 'card:shopHowTo' }),
+      ch('orders', '🛒', L('zamówienia', 'orders'), L('Złóż zamówienie: produkt, ilość, metoda płatności. Sprzedawca odpowie w wątku pod Twoją wiadomością.', 'Place an order: product, quantity, payment method. A seller will reply in a thread.'), { default: true, slowmode: 300 }),
       ch('pricing', '💰', L('cennik', 'pricing'), L('Aktualny cennik produktów i usług.', 'Current prices.'), { default: true, profile: 'readonly', posters: ['seller'] }),
       ch('reviews', '⭐', L('opinie', 'reviews'), L('Zostaw opinię po zakupie (1 wiadomość na 6h). Format: produkt, ocena 1-5, komentarz.', 'Leave a review (1 per 6h): product, rating 1-5, comment.'), { default: true, slowmode: 21600 }),
       ch('proofs', '✅', L('realizacje', 'proofs'), L('Dowody zrealizowanych zamówień.', 'Proofs of completed orders.'), { default: true, profile: 'readonly', posters: ['seller'] }),
@@ -595,7 +595,7 @@ const SERVER_TYPES = {
     cards: {
       shopHowTo: {
         title: L('📦 Jak złożyć zamówienie?', '📦 How to order?'),
-        description: L('1. Sprawdź ofertę i cennik\n2. Otwórz ticket na kanale pomocy\n3. Podaj produkt, ilość i preferowaną płatność\n4. Poczekaj na odpowiedź sprzedawcy\n5. Po realizacji zostaw opinię ⭐', '1. Check the offer and pricing\n2. Open a ticket\n3. Specify product, quantity and payment\n4. Wait for a seller\n5. Leave a review ⭐'),
+        description: L('1. Sprawdź ofertę i cennik\n2. Napisz na kanale zamówień: produkt, ilość i preferowaną płatność\n3. Poczekaj na odpowiedź sprzedawcy (w wątku pod Twoją wiadomością)\n4. Po realizacji zostaw opinię ⭐', '1. Check the offer and pricing\n2. Post in the orders channel: product, quantity and payment\n3. Wait for a seller to reply in a thread\n4. Leave a review ⭐'),
         fields: [
           { name: L('💳 Płatności', '💳 Payments'), value: '{payments}', needs: 'payments', inline: true },
           { name: L('⏱️ Czas realizacji', '⏱️ Delivery time'), value: '{time}', needs: 'time', inline: true },
@@ -608,16 +608,11 @@ const SERVER_TYPES = {
         needs: 'payments',
       },
     },
-    ticket: {
-      title: L('🛒 Złóż zamówienie', '🛒 Place an order'),
-      description: L('Kliknij przycisk, aby otworzyć prywatny kanał ze sprzedawcą. Opisz, co chcesz zamówić – odpowiemy najszybciej, jak to możliwe.', 'Click the button to open a private channel with a seller. Describe what you want to order.'),
-      button: L('Zamów / zapytaj', 'Order / ask'),
-    },
     rules: {
       title: L('Zasady zakupów', 'Shopping terms'),
       items: {
-        pl: ['Wszystkie zamówienia i płatności odbywają się wyłącznie przez tickety na tym serwerze.', 'Administracja nigdy nie pisze pierwsza w wiadomościach prywatnych – uważaj na oszustów.', 'Reklamacje zgłaszaj w ciągu 48 godzin od realizacji zamówienia.', 'Próba oszustwa lub chargeback skutkuje permanentnym banem.'],
-        en: ['All orders and payments go through tickets on this server only.', 'Staff never DMs first – beware of scammers.', 'Report issues within 48 hours of delivery.', 'Fraud or chargebacks result in a permanent ban.'],
+        pl: ['Zamówienia składamy wyłącznie na kanale zamówień, a płatności uzgadniamy tylko ze sprzedawcami z rolą Sprzedawca.', 'Administracja nigdy nie pisze pierwsza w wiadomościach prywatnych – uważaj na oszustów.', 'Reklamacje zgłaszaj w ciągu 48 godzin od realizacji zamówienia.', 'Próba oszustwa lub chargeback skutkuje permanentnym banem.'],
+        en: ['Orders are placed only in the orders channel; payments are agreed only with members holding the Seller role.', 'Staff never DMs first – beware of scammers.', 'Report issues within 48 hours of delivery.', 'Fraud or chargebacks result in a permanent ban.'],
       },
     },
   },
@@ -628,7 +623,7 @@ const SERVER_TYPES = {
     memberName: L('Ziomek', 'Friend'), memberEmoji: '🤙',
     special: { name: L('Nasze sprawy', 'Our stuff'), emoji: '🏠' },
     modules: ['general', 'media', 'memes', 'botcmds', 'music', 'voice', 'afk'],
-    never: ['verification', 'staff', 'logs', 'tickets', 'partnerships', 'faq', 'archive', 'rules', 'info'],
+    never: ['verification', 'staff', 'logs', 'partnerships', 'faq', 'archive', 'rules', 'info'],
     staffDefaults: ['owner', 'admin'],
     roleDefaults: { remove: ['levels', 'notifications', 'age', 'member'], add: ['colors'] },
     voiceLobby: { name: L('Gadamy', 'Talk'), emoji: '🗣️' },
@@ -695,7 +690,7 @@ const SERVER_TYPES = {
     description: 'Status, dokumentacja, zgłaszanie błędów, propozycje funkcji',
     memberName: L('Użytkownik', 'User'), memberEmoji: '👤',
     special: { name: L('Produkt', 'Product'), emoji: '🧩' }, specialPosition: 'afterNews',
-    modules: ['rules', 'info', 'faq', 'selfroles', 'welcome', 'announcements', 'changelog', 'general', 'botcmds', 'suggestions', 'tickets', 'voice', 'staff', 'logs'],
+    modules: ['rules', 'info', 'faq', 'roleinfo', 'welcome', 'announcements', 'changelog', 'general', 'botcmds', 'suggestions', 'voice', 'staff', 'logs'],
     staffExtras: [
       { key: 'supportAgent', name: L('Support', 'Support'), emoji: '🎧', level: 'helper', color: 'staffExtra', description: 'Odpowiada na zgłoszenia', default: true },
     ],
@@ -743,8 +738,8 @@ const SERVER_TYPES = {
     rules: {
       title: L('Zasady wsparcia', 'Support rules'),
       items: {
-        pl: ['Zanim zgłosisz problem, sprawdź FAQ i dokumentację.', 'Jeden problem = jeden post/ticket. Nie duplikuj zgłoszeń.', 'Nie oznaczaj developerów – odpowiemy w kolejności zgłoszeń.', 'Nie udostępniaj tokenów, haseł ani kluczy API – nawet ekipie.'],
-        en: ['Check FAQ and docs before reporting.', 'One issue = one post/ticket. No duplicates.', 'Do not ping developers – we answer in order.', 'Never share tokens, passwords or API keys – not even with staff.'],
+        pl: ['Zanim zgłosisz problem, sprawdź FAQ i dokumentację.', 'Jeden problem = jeden post. Nie duplikuj zgłoszeń.', 'Nie oznaczaj developerów – odpowiemy w kolejności zgłoszeń.', 'Nie udostępniaj tokenów, haseł ani kluczy API – nawet ekipie.'],
+        en: ['Check FAQ and docs before reporting.', 'One issue = one post. No duplicates.', 'Do not ping developers – we answer in order.', 'Never share tokens, passwords or API keys – not even with staff.'],
       },
     },
   },

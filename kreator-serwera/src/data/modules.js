@@ -15,14 +15,13 @@ const CATEGORIES = {
   items: { name: L('Tematy', 'Topics'), emoji: '🗂️' },
   voice: { name: L('Kanały głosowe', 'Voice channels'), emoji: '🔊' },
   vip: { name: L('Strefa VIP', 'VIP zone'), emoji: '💎', profile: 'vip' },
-  support: { name: L('Pomoc', 'Support'), emoji: '🎫' },
   staff: { name: L('Administracja', 'Staff'), emoji: '🛡️', profile: 'staff' },
   logs: { name: L('Logi', 'Logs'), emoji: '📁', profile: 'logs' },
   archive: { name: L('Archiwum', 'Archive'), emoji: '🗄️', profile: 'readonly' },
 };
 
 /** Kolejność kategorii; `special` może przeskoczyć za `news` (patrz preset.specialPosition). */
-const CATEGORY_ORDER = ['info', 'news', 'special', 'community', 'items', 'voice', 'vip', 'support', 'custom', 'staff', 'logs', 'archive'];
+const CATEGORY_ORDER = ['info', 'news', 'special', 'community', 'items', 'voice', 'vip', 'custom', 'staff', 'logs', 'archive'];
 
 /**
  * Definicja kanału:
@@ -40,7 +39,7 @@ function ch(key, emoji, name, topic, opts = {}) {
 
 /**
  * Moduły (sekcje serwera) wybierane w kroku „Sekcje”.
- * group: A = informacje i ogłoszenia, B = społeczność, C = głosowe, wsparcie, administracja.
+ * group: A = informacje i ogłoszenia, B = społeczność, C = głosowe i administracja.
  */
 const MODULES = {
   // ───────────── A: informacje i ogłoszenia ─────────────
@@ -72,12 +71,12 @@ const MODULES = {
       L('Najczęściej zadawane pytania – sprawdź, zanim zapytasz.', 'Frequently asked questions – check before asking.'),
       { cat: 'info', profile: 'readonly', post: 'faq' })],
   },
-  selfroles: {
-    group: 'A', emoji: '🎭', label: 'Wybór ról',
-    description: 'Panel z menu do samodzielnego wybierania ról',
-    channels: [ch('selfroles', '🎭', L('wybierz-role', 'self-roles'),
-      L('Wybierz role z menu poniżej – kolory, powiadomienia, zainteresowania.', 'Pick your roles from the menus below.'),
-      { cat: 'info', profile: 'readonly', post: 'selfroles' })],
+  roleinfo: {
+    group: 'A', emoji: '🎭', label: 'Opis ról',
+    description: 'Kanał z listą ról serwera i tym, jak je zdobyć',
+    channels: [ch('roleinfo', '🎭', L('role', 'roles'),
+      L('Lista ról na serwerze – kto jest kim i jak zdobyć daną rolę.', 'Server roles – who is who and how to get each role.'),
+      { cat: 'info', profile: 'readonly', post: 'rolesInfo' })],
   },
   welcome: {
     group: 'A', emoji: '👋', label: 'Powitania',
@@ -125,7 +124,7 @@ const MODULES = {
     group: 'A', emoji: '🤝', label: 'Partnerstwa',
     description: 'Serwery partnerskie i warunki współpracy',
     channels: [ch('partnerships', '🤝', L('partnerstwa', 'partnerships'),
-      L('Nasi partnerzy. Chcesz nawiązać współpracę? Otwórz ticket.', 'Our partners. Want to partner? Open a ticket.'),
+      L('Nasi partnerzy. Chcesz nawiązać współpracę? Napisz do administracji.', 'Our partners. Want to partner? Contact the staff.'),
       { cat: 'news', profile: 'readonly', posters: ['partnermgr'], post: 'partnerships' })],
   },
   polls: {
@@ -257,16 +256,6 @@ const MODULES = {
       ch('vipVoice', '💎', L('VIP Lounge', 'VIP Lounge'), null, { cat: 'vip', kind: 'voice' }),
     ],
   },
-  tickets: {
-    group: 'C', emoji: '🎫', label: 'Tickety (pomoc)',
-    description: 'Przycisk tworzy prywatny kanał z administracją',
-    channels: [
-      ch('ticketPanel', '🎫', L('utwórz-ticket', 'create-ticket'),
-        L('Potrzebujesz pomocy? Kliknij przycisk, aby otworzyć prywatne zgłoszenie.', 'Need help? Click the button to open a private ticket.'),
-        { cat: 'support', profile: 'readonly', post: 'tickets' }),
-      ch('supportVoice', '🆘', L('Poczekalnia pomocy', 'Support waiting room'), null, { cat: 'support', kind: 'voice', userLimit: 0 }),
-    ],
-  },
   staff: {
     group: 'C', emoji: '🛡️', label: 'Strefa administracji',
     description: 'Prywatne kanały ekipy + przewodnik dla ekipy',
@@ -310,7 +299,7 @@ const MODULES = {
 const MODULE_GROUPS = {
   A: { label: 'Informacje i ogłoszenia', emoji: '📌' },
   B: { label: 'Społeczność', emoji: '💬' },
-  C: { label: 'Głosowe, pomoc i administracja', emoji: '🛡️' },
+  C: { label: 'Głosowe i administracja', emoji: '🛡️' },
 };
 
 const SIZE_ORDER = ['small', 'medium', 'large', 'huge'];

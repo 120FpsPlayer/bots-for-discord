@@ -137,24 +137,38 @@ test('uprawnienia kanałów trafiają na serwer jako bity z poprawnymi ID ról',
   assert.ok(guild.me.roles.cache.has(result.roles.bots), 'bot dostał rolę Boty');
 });
 
-test('wiadomości: regulamin, panel weryfikacji z przyciskiem, panel ról z menu, tickety, forum propozycji', async () => {
+test('wiadomości: regulamin, panel weryfikacji z przyciskiem, opis ról (tekst), forum propozycji; bez ticketów i menu ról', async () => {
   const { guild, result } = await build('gaming', { tweak: (a) => { a.modules.push('verification', 'suggestions'); } });
   const msg = (key) => guild.channels.cache.get(result.channels[key]).messages;
   assert.ok(msg('rules')[0].embeds[0].toJSON().fields.length >= 5, 'regulamin ma paragrafy');
   const verifyButton = msg('verify')[0].components[0].toJSON().components[0];
   assert.equal(verifyButton.custom_id, `vf:pl:${result.roles.member}`);
-  const selects = msg('selfroles').flatMap((m) => m.components.map((r) => r.toJSON().components[0]));
-  assert.ok(selects.length >= 3, 'kilka menu ról');
-  for (const s of selects) {
-    for (const o of s.options) assert.ok(guild.roles.cache.has(o.value), 'opcja menu = ID istniejącej roli');
-  }
-  const ticketButton = msg('ticketPanel')[0].components[0].toJSON().components[0];
-  assert.match(ticketButton.custom_id, /^tk:o:pl:[\d.]*$/);
-  assert.ok(ticketButton.custom_id.length <= 100);
+  const roleInfo = msg('roleinfo');
+  assert.ok(roleInfo.length >= 1, 'opis ról opublikowany');
+  const roleText = roleInfo.flatMap((m) => m.embeds.flatMap((e) => e.toJSON().fields.map((f) => f.value))).join(' ');
+  assert.ok(roleText.includes(`<@&${result.roles.owner}>`), 'opis ról wymienia role');
+  const allMessages = [...guild.channels.cache.values()].flatMap((c) => c.messages);
+  const customIds = allMessages.flatMap((m) => (m.components || []).flatMap((r) => r.toJSON().components.map((c) => c.custom_id)));
+  assert.deepEqual(customIds.filter((id) => !id.startsWith('vf:')), [], 'jedyny interaktywny element to przycisk weryfikacji');
+  assert.ok(![...guild.channels.cache.values()].some((c) => /ticket/.test(c.name)), 'brak kanałów ticketów');
   const forum = guild.channels.cache.get(result.channels.suggestions);
   assert.equal(forum.type, ChannelType.GuildForum);
   assert.equal(forum.threadsCreated.length, 1);
   assert.ok(forum.threadsCreated[0].pinned);
+});
+
+test('dostęp do kanałów z kreatora trafia na serwer (bity uprawnień na kanałach)', async () => {
+  const { guild, result } = await build('gaming', {
+    tweak: (a) => { a.channelAccess = { community: { view: 'default', write: 'readonly' }, voice: { view: 'staff', write: 'default' } }; },
+  });
+  assert.deepEqual(result.errors, []);
+  assert.ok(result.created.overwrites > 50, `ustawiono ${result.created.overwrites} nadpisań`);
+  const general = guild.channels.cache.get(result.channels.general);
+  const everyone = general.permissionOverwrites.find((o) => o.id === guild.id);
+  assert.ok(everyone.deny & PermissionFlagsBits.SendMessages, '#ogólny: członkowie nie piszą');
+  const lobby = guild.channels.cache.get(result.channels.lobby1);
+  assert.ok(lobby.permissionOverwrites.find((o) => o.id === guild.id).deny & PermissionFlagsBits.ViewChannel, 'lobby ukryte');
+  assert.ok(lobby.permissionOverwrites.find((o) => o.id === result.roles.mod).allow & PermissionFlagsBits.ViewChannel, 'ekipa widzi lobby');
 });
 
 test('przerwanie budowy zatrzymuje ją po bieżącej operacji', async () => {

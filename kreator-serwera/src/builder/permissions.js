@@ -113,7 +113,8 @@ const VISIBILITY_PROFILES = new Set(['staff', 'admin', 'adminPost', 'logs', 'vip
 function profileOverwrites(profile, g, { posters = [], access = [], gate = false, filesOff = false } = {}) {
   const E = '@everyone';
   const allowFor = (keys, perms) => unique(keys).map((k) => ow(k, perms));
-  const writers = unique([...g.admins, ...posters]);
+  // W kanałach tylko do odczytu piszą: administracja, wskazane role (np. Event Manager) i boty (np. feedy newsów).
+  const writers = unique([...g.admins, ...posters, ...g.bots]);
 
   switch (profile) {
     case 'public':
@@ -159,7 +160,127 @@ function profileOverwrites(profile, g, { posters = [], access = [], gate = false
   }
 }
 
+// ───────────── Dostęp do kanałów (krok „Dostęp do kanałów” w kreatorze) ─────────────
+
+/** Kto widzi kanał. `mods`, `role` i `verify` wynikają z ustawień zalecanych – nie da się ich wybrać ręcznie. */
+const VIEW_OPTIONS = {
+  members: { emoji: '👥', label: 'Wszyscy członkowie', short: 'członkowie', description: 'Widzą wszyscy (po weryfikacji, jeśli jest włączona)' },
+  unverified: { emoji: '🌍', label: 'Wszyscy, także przed weryfikacją', short: 'wszyscy (też niezweryfikowani)', description: 'Widoczne od razu po wejściu na serwer' },
+  vip: { emoji: '💎', label: 'VIP, partnerzy, boosterzy + ekipa', short: 'VIP + ekipa', description: 'Ukryte przed zwykłymi członkami' },
+  staff: { emoji: '🛡️', label: 'Tylko ekipa', short: 'tylko ekipa', description: 'Widzi tylko administracja i moderacja' },
+  admins: { emoji: '🔒', label: 'Tylko zarząd', short: 'tylko zarząd', description: 'Widzą tylko administratorzy' },
+};
+const VIEW_LABELS = {
+  ...Object.fromEntries(Object.entries(VIEW_OPTIONS).map(([k, v]) => [k, `${v.emoji} ${v.short}`])),
+  mods: '🛡️ moderacja',
+  role: '🔒 tylko z rolą',
+  verify: '✅ tylko niezweryfikowani',
+};
+
+/** Kto może pisać (w kanałach głosowych: mówić). */
+const WRITE_OPTIONS = {
+  all: { emoji: '✍️', label: 'Każdy, kto widzi, może pisać', short: 'piszą wszyscy', description: 'Na głosowych: każdy może mówić' },
+  readonly: { emoji: '👁️', label: 'Tylko odczyt – pisze zarząd', short: 'odczyt (pisze zarząd)', description: 'Członkowie tylko czytają (na głosowych: tylko słuchają)' },
+  readonlyStaff: { emoji: '🛡️', label: 'Tylko odczyt – pisze cała ekipa', short: 'odczyt (pisze ekipa)', description: 'Pisać mogą wszyscy z ekipy' },
+  threads: { emoji: '🧵', label: 'Tylko odpowiedzi w wątkach', short: 'tylko w wątkach', description: 'Nowe wiadomości pisze ekipa, członkowie odpowiadają w wątkach' },
+};
+const WRITE_LABELS = {
+  ...Object.fromEntries(Object.entries(WRITE_OPTIONS).map(([k, v]) => [k, `${v.emoji} ${v.short}`])),
+  bots: '🤖 piszą boty',
+  none: '🚫 bez pisania',
+  listen: '🔇 bez mówienia',
+};
+
+const VOICE_WRITE_LABELS = {
+  all: '🎙️ mówią wszyscy',
+  readonly: '🔇 mówi tylko zarząd',
+  readonlyStaff: '🔇 mówi tylko ekipa',
+  listen: '🔇 bez mówienia',
+};
+
+/** Czytelny opis dostępu kanału, np. „👥 członkowie · 👁️ odczyt (pisze zarząd)”. */
+function describeAccess(access, kind = 'text') {
+  const voice = kind === 'voice' || kind === 'stage';
+  const write = (voice && VOICE_WRITE_LABELS[access.write]) || WRITE_LABELS[access.write];
+  return { view: VIEW_LABELS[access.view], write, text: `${VIEW_LABELS[access.view]} · ${write}` };
+}
+
+const PROFILE_VIEW = {
+  staff: 'staff', adminPost: 'staff', admin: 'admins', logs: 'mods', vip: 'vip', private: 'role', verify: 'verify',
+};
+const PROFILE_WRITE = {
+  readonly: 'readonly', rules: 'readonly', adminPost: 'readonly', threadsOnly: 'threads', logs: 'bots', verify: 'none', afk: 'listen', quiet: 'listen',
+};
+
+/** Kanały, których uprawnień nie zmieniają ustawienia sekcji (bez nich serwer by się „zepsuł”). */
+function isProtectedChannel(profile, gate) {
+  return profile === 'verify' || profile === 'admin' || profile === 'private' || (profile === 'rules' && gate);
+}
+
+/** Zalecany (domyślny) dostęp kanału wynikający z jego profilu i profilu kategorii. */
+function defaultAccess(channelProfile, categoryProfile, gate) {
+  let view = PROFILE_VIEW[channelProfile] || PROFILE_VIEW[categoryProfile] || 'members';
+  if (channelProfile === 'rules' && gate) view = 'unverified';
+  let write = PROFILE_WRITE[channelProfile];
+  if (!write) write = ['public', 'media'].includes(channelProfile) ? (PROFILE_WRITE[categoryProfile] || 'all') : 'all';
+  return { view, write };
+}
+
+/**
+ * Buduje nadpisania z pary (kto widzi, kto pisze).
+ * kind = rodzaj kanału (głosowe: „pisanie” = mówienie), posters = role, które mogą pisać w kanale tylko do odczytu.
+ */
+function accessOverwrites(view, write, g, { kind = 'text', posters = [], gate = false } = {}) {
+  const E = '@everyone';
+  const voice = kind === 'voice' || kind === 'stage';
+  const allowFor = (keys, perms) => unique(keys).map((k) => ow(k, perms));
+  const out = [];
+
+  // Kto widzi
+  if (view === 'unverified') {
+    out.push(ow(E, voice ? ['ViewChannel', 'Connect'] : ['ViewChannel', 'ReadMessageHistory']));
+  } else if (view === 'vip') {
+    out.push(ow(E, [], ['ViewChannel']), ...allowFor([...g.vip, '@booster', ...g.staff], ['ViewChannel']));
+  } else if (view === 'staff') {
+    out.push(ow(E, [], ['ViewChannel']), ...allowFor(g.staff, ['ViewChannel']));
+  } else if (view === 'mods') {
+    out.push(ow(E, [], ['ViewChannel']), ...allowFor(g.mods, ['ViewChannel', 'ReadMessageHistory']));
+  } else if (view === 'admins') {
+    out.push(ow(E, [], ['ViewChannel']), ...allowFor(g.admins, ['ViewChannel']));
+  }
+
+  // Kto pisze / mówi
+  const writersFor = (base) => unique([...base, ...posters, ...g.bots]);
+  if (voice) {
+    const speakers = write === 'readonlyStaff' ? writersFor(g.staff) : writersFor(g.admins);
+    if (write === 'readonly' || write === 'readonlyStaff' || write === 'listen') {
+      out.push(ow(E, [], ['Speak', 'Stream', 'UseSoundboard']), ...allowFor(write === 'listen' ? [] : speakers, ['ViewChannel', 'Connect', 'Speak', 'Stream']));
+    } else if (view === 'unverified' && gate) {
+      out.push(ow(E, ['Speak', 'UseVAD']));
+    }
+    return mergeOverwrites(out);
+  }
+  if (write === 'readonly' || write === 'readonlyStaff') {
+    out.push(ow(E, [], SEND_SET), ...allowFor(writersFor(write === 'readonlyStaff' ? g.staff : g.admins), POST_SET));
+  } else if (write === 'threads') {
+    out.push(ow(E, ['SendMessagesInThreads'], ['SendMessages', 'CreatePublicThreads', 'CreatePrivateThreads']), ...allowFor(writersFor(g.admins), POST_SET));
+  } else if (write === 'bots') {
+    out.push(ow(E, [], [...SEND_SET, 'AddReactions']), ...allowFor(g.bots, ['ViewChannel', 'SendMessages', 'EmbedLinks', 'AttachFiles', 'ReadMessageHistory']));
+  } else if (write === 'all' && view === 'unverified' && gate) {
+    out.push(ow(E, ['SendMessages', 'SendMessagesInThreads', 'AddReactions']));
+  }
+  return mergeOverwrites(out);
+}
+
 module.exports = {
+  VIEW_OPTIONS,
+  VIEW_LABELS,
+  WRITE_OPTIONS,
+  WRITE_LABELS,
+  describeAccess,
+  isProtectedChannel,
+  defaultAccess,
+  accessOverwrites,
   MEMBER_CORE,
   MEMBER_TOGGLES,
   ALL_MEMBER,

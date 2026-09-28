@@ -33,11 +33,11 @@ function createWizard({ store, config, runBuild }) {
         title: '👋 Witaj w Kreatorze Serwera!',
         color: COLORS.primary,
         description: [
-          'Odpowiesz na **14 krótkich pytań**, a ja zbuduję dla Ciebie kompletny, profesjonalny serwer: **role z uprawnieniami, kategorie, kanały, regulamin, panele, AutoMod i ustawienia bezpieczeństwa**.',
+          `Odpowiesz na **${STEPS.length} krótkich pytań**, a ja zbuduję dla Ciebie kompletny, profesjonalny serwer: **role z uprawnieniami, kategorie i kanały z ustawionym dostępem (kto widzi, kto pisze), regulamin, informacje, weryfikację, AutoMod i ustawienia bezpieczeństwa**.`,
           '',
           '**Jak to działa?**',
           '1️⃣ Wybierasz typ serwera – dostajesz mądre ustawienia startowe',
-          '2️⃣ Dopracowujesz szczegóły: nazwy, wygląd, sekcje, role, uprawnienia…',
+          '2️⃣ Dopracowujesz szczegóły: nazwy, wygląd, sekcje, role, kto widzi i kto pisze na kanałach…',
           '3️⃣ Sprawdzasz podsumowanie oraz podgląd kanałów i ról',
           '4️⃣ Klikasz **Zbuduj serwer** – resztę robię ja ⚡',
           '',
@@ -142,7 +142,7 @@ function createWizard({ store, config, runBuild }) {
         title,
         description: pages[page],
         color: COLORS.neutral,
-        footer: `Strona ${page + 1}/${pages.length} • 📨 = bot opublikuje tu wiadomość`,
+        footer: s.view.kind === 'roles' ? `Strona ${page + 1}/${pages.length}` : `Strona ${page + 1}/${pages.length} • bez opisu = widzą i piszą wszyscy członkowie • 📨 = wiadomość bota • ✏️ = zmienione przez Ciebie`,
       })],
       components: [row(
         button(cid(s, 'n', 'pprev'), 'Poprzednia', { emoji: '⬅️', disabled: page === 0 }),

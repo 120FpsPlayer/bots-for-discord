@@ -103,7 +103,7 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
       `🎭 **${c.roles}**/${blueprint.stats.roles} ról`,
       `📁 **${c.categories}**/${blueprint.stats.categories} kategorii`,
       `💬 **${c.channels}**/${blueprint.stats.channels} kanałów`,
-      `📨 **${c.messages}** wiadomości i paneli`,
+      `📨 **${c.messages}** wiadomości`,
       `🤖 **${c.automod}** reguł AutoMod`,
     ].join('\n'), true),
   ];
@@ -111,6 +111,12 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
     fields.push(field('🧹 Usunięto', `💬 ${d.channels} kanałów\n🎭 ${d.roles} ról\n🤖 ${d.automod} reguł AutoMod`, true));
   }
   fields.push(field('⏱️ Czas budowy', `${formatDuration(result.duration / 1000)}\n🌟 Społeczność: ${result.community ? 'włączona' : 'wyłączona'}`, true));
+  const st = blueprint.stats;
+  fields.push(field('🔑 Uprawnienia kanałów', [
+    `⚙️ Ustawiono **${c.overwrites}** nadpisań uprawnień`,
+    `💬 ${st.open} otwartych • 👁️ ${st.readonly} tylko do odczytu • 🔒 ${st.hidden} ukrytych`,
+    blueprint.meta.gate ? '✅ Nowe osoby widzą tylko regulamin i weryfikację' : '👥 Nowe osoby od razu widzą kanały dla członków',
+  ].join('\n')));
   if (result.fatal) fields.push(field('💥 Błąd krytyczny', result.fatal));
   if (problems.length) {
     const shown = problems.slice(0, 12).join('\n');
@@ -120,7 +126,7 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
     '1. **Przeciągnij rolę bota na samą górę** listy ról (Ustawienia → Role).',
     '2. Nadaj role ekipie i sprawdź regulamin – dopasuj go do siebie.',
     '3. Dodaj boty (moderacja/logi, poziomy, muzyka) i nadaj im rolę **Boty**.',
-    '4. Zostaw tego bota online – obsługuje weryfikację, panel ról i tickety.',
+    '4. Zostaw tego bota online – obsługuje przycisk weryfikacji.',
   ].join('\n')));
 
   const link = (key) => (result.channels[key] ? `https://discord.com/channels/${guild.id}/${result.channels[key]}` : null);

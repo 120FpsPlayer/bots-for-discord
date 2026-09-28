@@ -7,23 +7,9 @@ const { STAFF_LEVELS } = require('../data/roles');
 const { SIZES, AGES, LANGUAGES } = require('./defaults');
 const { COMMUNITY_OPTIONS } = require('./steps');
 const { field, clip, formatDuration } = require('./ui');
+const { describeAccess } = require('../builder/permissions');
 
 const KIND_ICON = { text: '#', announcement: '📢', forum: '🗂️', voice: '🔊', stage: '🎤' };
-const PROFILE_NOTE = {
-  readonly: '👁️ odczyt',
-  rules: '👁️ odczyt',
-  verify: '✅ weryfikacja',
-  staff: '🔒 ekipa',
-  admin: '🔒 zarząd',
-  adminPost: '🔒 ekipa · 👁️',
-  logs: '🔒 logi',
-  vip: '💎 VIP',
-  private: '🔒 rola',
-  afk: '💤 AFK',
-  quiet: '🤫 cisza',
-  threadsOnly: '🧵 wątki',
-  media: '📎 media',
-};
 
 function hex(color) {
   return color ? `#${color.toString(16).padStart(6, '0').toUpperCase()}` : 'brak';
@@ -51,7 +37,10 @@ function channelPages(bp) {
     lines.push(`\n📁 **${cat.name}**${privacy}`);
     for (const ch of cat.channels) {
       const notes = [];
-      if (PROFILE_NOTE[ch.profile]) notes.push(PROFILE_NOTE[ch.profile]);
+      const access = describeAccess(ch.access, ch.kind);
+      if (ch.access.view !== 'members') notes.push(access.view);
+      if (ch.access.write !== 'all') notes.push(access.write);
+      if (ch.access.custom) notes.push('✏️');
       if (ch.slowmode) notes.push(`🐢 ${formatDuration(ch.slowmode)}`);
       if (ch.userLimit) notes.push(`👥 ${ch.userLimit}`);
       if (ch.nsfw) notes.push('🔞');
@@ -76,7 +65,6 @@ function rolePages(bp) {
     else if (role.permissions.length) notes.push(`🔓 ${role.permissions.length} upr.`);
     if (role.hoist) notes.push('📌 wyróżniona');
     if (role.mentionable) notes.push('🔔 pingowalna');
-    if (role.self) notes.push(role.self.mode === 'single' ? '🎭 do wyboru (1)' : '🎭 do wyboru');
     lines.push(`\`${hex(role.color).padEnd(7)}\` ${role.name}${notes.length ? `  ·  *${notes.join(' · ')}*` : ''}`);
   }
   if (bp.everyone.length) lines.push(`\n**@everyone** · 🔓 ${bp.everyone.length} uprawnień (bez weryfikacji każdy ma podstawowe uprawnienia)`);
@@ -106,8 +94,8 @@ function summaryFields(session, bp) {
       `📁 **${st.categories}** kategorii`,
       `💬 **${st.text}** tekstowych${st.forums ? ` (w tym ${st.forums} forów)` : ''}`,
       `🔊 **${st.voice}** głosowych`,
-      `🎭 **${st.roles}** ról${st.separators ? ` (w tym ${st.separators} separatorów)` : ''}, ${st.selfRoles} do wyboru`,
-      `📨 **${st.messages}** wiadomości i paneli`,
+      `🎭 **${st.roles}** ról${st.separators ? ` (w tym ${st.separators} separatorów)` : ''}`,
+      `📨 **${st.messages}** wiadomości (tekst + przycisk weryfikacji)`,
       `🤖 **${st.automod}** reguł AutoMod`,
     ].join('\n'), true),
     field('🛡️ Bezpieczeństwo', [
@@ -122,6 +110,13 @@ function summaryFields(session, bp) {
       `👑 Nadanie ról: ${a.mode.assign ? 'tak' : 'nie'}`,
     ].join('\n'), true),
   ];
+  const custom = Object.keys(a.channelAccess || {}).length;
+  fields.push(field('🔑 Uprawnienia kanałów', [
+    `💬 **${st.open}** otwartych – członkowie widzą i piszą`,
+    `👁️ **${st.readonly}** tylko do odczytu (lub wątki / bez mówienia)`,
+    `🔒 **${st.hidden}** ukrytych – tylko ekipa, zarząd, VIP lub rola`,
+    `⚙️ **${st.overwrites}** nadpisań uprawnień ustawi bot${custom ? ` • ✏️ zmienione sekcje: ${custom}` : ' • ustawienia zalecane'}`,
+  ].join('\n'), true));
   if (bp.errors.length) fields.push(field('❌ Do poprawy przed budową', bp.errors.map((e) => `• ${e}`).join('\n')));
   if (bp.warnings.length) fields.push(field(`⚠️ Uwagi (${bp.warnings.length})`, clip(bp.warnings.map((w) => `• ${w}`).join('\n'), 1024)));
   return fields;

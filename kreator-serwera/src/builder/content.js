@@ -1,9 +1,9 @@
 'use strict';
 
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
 } = require('discord.js');
-const { tr, fill } = require('../utils/i18n');
+const { L, tr, fill } = require('../utils/i18n');
 const { SERVER_TYPES } = require('../data/serverTypes');
 const { STAFF_LEVELS } = require('../data/roles');
 
@@ -34,10 +34,10 @@ function truncate(text, max) {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-/** Tekst odwołujący się do ticketów albo do administracji, jeśli ticketów nie ma. */
+/** Jak skontaktować się z ekipą – wskazuje konkretną rolę (wzmianka w embedzie nikogo nie pinguje). */
 function contactStaff(ctx) {
-  const ticket = ctx.ch('ticketPanel');
-  return ticket ? T(ctx, `otwórz ticket na ${ticket}`, `open a ticket in ${ticket}`) : T(ctx, 'napisz do administracji', 'contact the staff');
+  const role = ['mod', 'helper', 'admin'].map((key) => ctx.role(key)).find(Boolean);
+  return role ? T(ctx, `napisz do osoby z rolą ${role}`, `message someone with the ${role} role`) : T(ctx, 'napisz do administracji', 'contact the staff');
 }
 
 // ───────────────────────────── REGULAMIN ─────────────────────────────
@@ -183,12 +183,11 @@ function info(ctx) {
   const guide = [
     ['rules', T(ctx, 'zasady serwera – przeczytaj koniecznie', 'server rules – must read')],
     ['announcements', T(ctx, 'najważniejsze ogłoszenia', 'important announcements')],
-    ['selfroles', T(ctx, 'wybierz role, kolory i powiadomienia', 'pick roles, colors and notifications')],
+    ['roleinfo', T(ctx, 'role na serwerze i jak je zdobyć', 'server roles and how to get them')],
     ['general', T(ctx, 'główny czat', 'main chat')],
     ['introductions', T(ctx, 'przedstaw się społeczności', 'introduce yourself')],
     ['suggestions', T(ctx, 'zgłoś pomysł na ulepszenie serwera', 'suggest improvements')],
     ['botcmds', T(ctx, 'komendy botów', 'bot commands')],
-    ['ticketPanel', T(ctx, 'pomoc od administracji', 'help from staff')],
     ['faq', T(ctx, 'odpowiedzi na częste pytania', 'frequently asked questions')],
   ].map(([key, text]) => (ctx.ch(key) ? `${ctx.ch(key)} – ${text}` : null));
   const guideText = lines(guide);
@@ -222,14 +221,14 @@ function info(ctx) {
 
 function faq(ctx) {
   const qa = T(ctx, [
-    ['Jak zdobyć rolę?', ctx.ch('selfroles') ? `Większość ról wybierzesz sam na ${ctx.ch('selfroles')}. Role specjalne nadaje administracja.` : 'Role nadaje administracja.'],
+    ['Jak zdobyć rolę?', ctx.ch('roleinfo') ? `Opis wszystkich ról i sposób ich zdobycia znajdziesz na ${ctx.ch('roleinfo')}. Role nadaje administracja.` : 'Role nadaje administracja.'],
     ['Nie widzę kanałów – co robić?', ctx.ch('verify') ? `Zweryfikuj się na ${ctx.ch('verify')}. Jeśli dalej nic nie widzisz, ${contactStaff(ctx)}.` : `Upewnij się, że masz odpowiednią rolę. W razie problemów ${contactStaff(ctx)}.`],
     ['Jak zgłosić użytkownika?', `Zrób zrzut ekranu i ${contactStaff(ctx)}. Nie rób „samosądów” na czacie.`],
     ['Jak dołączyć do ekipy?', 'Śledź ogłoszenia – informujemy o rekrutacjach. Najlepszą rekomendacją jest aktywność i kultura.'],
     ['Czy mogę zareklamować swój serwer?', ctx.ch('partnerships') ? `Tylko w ramach partnerstwa – szczegóły na ${ctx.ch('partnerships')}.` : 'Nie, reklama bez zgody administracji jest zabroniona.'],
     ['Otrzymałem karę – co teraz?', `Przeczytaj regulamin${ctx.ch('rules') ? ` (${ctx.ch('rules')})` : ''}. Jeśli uważasz, że kara była niesłuszna, ${contactStaff(ctx)}.`],
   ], [
-    ['How do I get roles?', ctx.ch('selfroles') ? `Pick most roles yourself in ${ctx.ch('selfroles')}. Special roles are given by staff.` : 'Roles are given by staff.'],
+    ['How do I get roles?', ctx.ch('roleinfo') ? `All roles and how to get them are described in ${ctx.ch('roleinfo')}. Roles are given by staff.` : 'Roles are given by staff.'],
     ['I can\'t see channels – what now?', ctx.ch('verify') ? `Verify in ${ctx.ch('verify')}. If it still doesn't work, ${contactStaff(ctx)}.` : `Make sure you have the right role, or ${contactStaff(ctx)}.`],
     ['How do I report someone?', `Take a screenshot and ${contactStaff(ctx)}.`],
     ['How do I join the staff?', 'Watch the announcements for applications. Activity and good manners are the best recommendation.'],
@@ -264,104 +263,88 @@ function verify(ctx) {
   return { embeds: [embed], components: [row] };
 }
 
-// ───────────────────────────── PANEL RÓL ─────────────────────────────
+// ───────────────────────────── OPIS RÓL ─────────────────────────────
 
-const SELF_GROUP_TEXT = {
-  notifications: { emoji: '🔔', pl: ['Powiadomienia', 'Wybierz, o czym chcesz dostawać pingi.'], en: ['Notifications', 'Choose what you want to be pinged about.'] },
-  colors: { emoji: '🎨', pl: ['Kolor nicku', 'Wybierz jeden kolor swojego nicku.'], en: ['Name color', 'Pick one color for your name.'] },
-  items: { emoji: '⭐', pl: ['Zainteresowania', 'Zaznacz, co Cię interesuje – odblokujesz powiązane kanały i pingi.'], en: ['Interests', 'Select what you are into.'] },
-  age: { emoji: '🎂', pl: ['Wiek', 'Wybierz swój przedział wiekowy.'], en: ['Age', 'Pick your age range.'] },
-  pronouns: { emoji: '💬', pl: ['Zaimki', 'Jak mamy się do Ciebie zwracać?'], en: ['Pronouns', 'How should we refer to you?'] },
-  platform: { emoji: '🎮', pl: ['Platformy', 'Na czym grasz?'], en: ['Platforms', 'What do you play on?'] },
-  region: { emoji: '📍', pl: ['Region', 'Skąd jesteś?'], en: ['Region', 'Where are you from?'] },
-  custom: { emoji: '✨', pl: ['Dodatkowe role', 'Pozostałe role do wyboru.'], en: ['Extra roles', 'Other roles to pick.'] },
+/** Nagłówki grup ról w opisie (klucz = sekcja roli albo grupa „o mnie”). */
+const ROLE_SECTION_TEXT = {
+  staff: { emoji: '🛡️', pl: 'Ekipa', en: 'Staff' },
+  special: { emoji: '⭐', pl: 'Role specjalne', en: 'Special roles', hint: L('nadaje ekipa (zasługi, wsparcie, partnerstwo)', 'given by staff (merit, support, partnership)') },
+  access: { emoji: '🔒', pl: 'Dostęp', en: 'Access', hint: L('dają dostęp do prywatnych kanałów – nadaje ekipa', 'unlock private channels – given by staff') },
+  members: { emoji: '✅', pl: 'Członkowie', en: 'Members' },
+  levels: { emoji: '📈', pl: 'Poziomy', en: 'Levels', hint: L('zdobywasz je za aktywność na serwerze', 'earned by being active') },
+  colors: { emoji: '🎨', pl: 'Kolory nicku', en: 'Name colors' },
+  items: { emoji: '⭐', pl: 'Zainteresowania', en: 'Interests' },
+  notifications: { emoji: '🔔', pl: 'Powiadomienia', en: 'Notifications', hint: L('dostajesz pingi o wybranych sprawach', 'get pinged about selected topics') },
+  age: { emoji: '🎂', pl: 'Wiek', en: 'Age' },
+  pronouns: { emoji: '💬', pl: 'Zaimki', en: 'Pronouns' },
+  platform: { emoji: '🎮', pl: 'Platformy', en: 'Platforms' },
+  region: { emoji: '📍', pl: 'Region', en: 'Region' },
+  custom: { emoji: '✨', pl: 'Dodatkowe', en: 'Extra' },
 };
 
-const SELF_GROUP_ORDER = ['notifications', 'colors', 'items', 'platform', 'age', 'pronouns', 'region', 'custom'];
+const ROLE_SECTION_ORDER = ['staff', 'special', 'access', 'members', 'levels', 'colors', 'items', 'notifications', 'age', 'pronouns', 'platform', 'region', 'custom'];
 
-function selfroles(ctx) {
-  const groups = [];
-  for (const group of SELF_GROUP_ORDER) {
-    const roles = ctx.blueprint.roles.filter((r) => r.self?.group === group && ctx.roleId(r.key));
-    if (!roles.length) continue;
-    const mode = roles[0].self.mode;
-    for (let i = 0; i < roles.length; i += 25) {
-      const chunk = roles.slice(i, i + 25);
-      groups.push({ group, mode, roles: chunk, part: roles.length > 25 ? Math.floor(i / 25) + 1 : null });
-    }
+/** Tekstowy opis ról serwera (bez przycisków i menu – role nadaje ekipa). */
+function rolesInfo(ctx) {
+  const preset = SERVER_TYPES[ctx.answers.type];
+  const groups = new Map();
+  for (const role of ctx.blueprint.roles) {
+    if (role.separator || !ctx.role(role.key)) continue;
+    const key = role.section === 'about' ? role.self?.group : role.section;
+    if (!ROLE_SECTION_TEXT[key]) continue;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(role);
   }
-  if (!groups.length) return null;
+  if (!groups.size) return null;
 
-  const messages = [];
-  for (let i = 0; i < groups.length; i += 5) {
-    const batch = groups.slice(i, i + 5);
-    const embed = baseEmbed(ctx);
-    if (i === 0) {
-      embed.setTitle(T(ctx, '🎭 Wybierz swoje role', '🎭 Pick your roles'))
-        .setDescription(T(ctx,
-          'Użyj menu poniżej, aby dodać lub usunąć role. Odznaczenie roli w menu ją usuwa.\nZmiany są natychmiastowe, a potwierdzenie zobaczysz tylko Ty.',
-          'Use the menus below to add or remove roles. Unselecting a role removes it.\nChanges are instant and only you will see the confirmation.'));
+  const fields = [];
+  for (const key of ROLE_SECTION_ORDER) {
+    const roles = groups.get(key);
+    if (!roles) continue;
+    const text = ROLE_SECTION_TEXT[key];
+    let title = text[ctx.lang] ?? text.pl;
+    if ((key === 'items' || key === 'access') && preset?.list) title = tr(preset.list.category, ctx.lang);
+    let value;
+    if (key === 'staff') {
+      value = roles.map((r) => `${ctx.role(r.key)} – ${tr(STAFF_LEVELS[r.level]?.short, ctx.lang)}`).join('\n');
+    } else if (key === 'members') {
+      value = `${roles.map((r) => ctx.role(r.key)).join(' ')} – ${ctx.blueprint.meta.gate
+        ? T(ctx, `dostajesz ją po weryfikacji${ctx.ch('verify') ? ` na ${ctx.ch('verify')}` : ''}`, `you get it after verifying${ctx.ch('verify') ? ` in ${ctx.ch('verify')}` : ''}`)
+        : T(ctx, 'podstawowa rola członka społeczności', 'the basic member role')}`;
     } else {
-      embed.setTitle(T(ctx, '🎭 Więcej ról', '🎭 More roles'));
+      value = roles.map((r) => ctx.role(r.key)).join(' ');
+      if (text.hint) value += `\n*${tr(text.hint, ctx.lang)}*`;
     }
-    const rows = [];
-    batch.forEach((g, index) => {
-      const text = SELF_GROUP_TEXT[g.group] ?? SELF_GROUP_TEXT.custom;
-      const [title, hint] = text[ctx.lang] ?? text.pl;
-      const fullTitle = g.part ? `${title} (${g.part})` : title;
-      embed.addFields({ name: `${text.emoji} ${fullTitle}`, value: `${hint}${g.mode === 'single' ? T(ctx, ' *(jedna rola)*', ' *(one role)*') : ''}` });
-      const menu = new StringSelectMenuBuilder()
-        .setCustomId(`sr:${ctx.lang}:${g.mode === 'single' ? 's' : 'm'}:${i + index}`)
-        .setPlaceholder(`${text.emoji} ${fullTitle}`)
-        .setMinValues(0)
-        .setMaxValues(g.mode === 'single' ? 1 : g.roles.length)
-        .addOptions(g.roles.map((r) => {
-          const option = { label: truncate(r.label || r.name, 100), value: ctx.roleId(r.key) };
-          if (r.emoji) option.emoji = r.emoji;
-          return option;
-        }));
-      rows.push(new ActionRowBuilder().addComponents(menu));
-    });
-    messages.push({ embeds: [embed], components: rows });
+    fields.push({ name: `${text.emoji} ${title}`, value: truncate(value, 1024) });
+  }
+  fields.push({
+    name: T(ctx, 'ℹ️ Jak zdobyć rolę?', 'ℹ️ How to get a role?'),
+    value: T(ctx,
+      `Role ekipy i role specjalne nadaje administracja. Jeśli chcesz dostać rolę z listy (np. kolor, powiadomienia, zainteresowania), ${contactStaff(ctx)}.`,
+      `Staff and special roles are given by the administration. If you want a role from the list (e.g. a color, notifications, interests), ${contactStaff(ctx)}.`),
+  });
+
+  // Limit Discorda: 6000 znaków na wszystkie embedy jednej wiadomości – w razie potrzeby dzielimy na kilka.
+  const messages = [];
+  let embed = null;
+  let size = 0;
+  for (const f of fields) {
+    const len = f.name.length + f.value.length;
+    if (!embed || size + len > 5000 || embed.data.fields?.length >= 20) {
+      embed = baseEmbed(ctx);
+      if (!messages.length) {
+        embed.setTitle(T(ctx, '🎭 Role na serwerze', '🎭 Server roles'))
+          .setDescription(T(ctx, 'Kto jest kim na serwerze i jak zdobyć poszczególne role.', 'Who is who on the server and how to get each role.'));
+        size = 100;
+      } else {
+        size = 0;
+      }
+      messages.push({ embeds: [embed] });
+    }
+    embed.addFields(f);
+    size += len;
   }
   return messages;
-}
-
-// ───────────────────────────── TICKETY ─────────────────────────────
-
-function tickets(ctx) {
-  const preset = SERVER_TYPES[ctx.answers.type];
-  const supportIds = ctx.blueprint.ticketSupport.map((key) => ctx.roleId(key)).filter(Boolean).slice(0, 4);
-  const custom = preset?.ticket;
-  const embed = baseEmbed(ctx)
-    .setTitle(custom ? tr(custom.title, ctx.lang) : T(ctx, '🎫 Centrum pomocy', '🎫 Help center'))
-    .setDescription(custom ? tr(custom.description, ctx.lang) : T(ctx,
-      'Potrzebujesz pomocy, chcesz zgłosić użytkownika lub odwołać się od kary?\nKliknij przycisk poniżej – utworzymy **prywatny kanał** widoczny tylko dla Ciebie i ekipy.',
-      'Need help, want to report someone or appeal a punishment?\nClick the button below – we will create a **private channel** visible only to you and the staff.'))
-    .addFields(
-      {
-        name: T(ctx, '📌 Kiedy otworzyć zgłoszenie?', '📌 When to open a ticket?'),
-        value: T(ctx,
-          '• pytania do administracji\n• zgłoszenie użytkownika lub błędu\n• odwołanie od kary\n• współpraca i partnerstwo',
-          '• questions for the staff\n• reporting a user or a bug\n• appealing a punishment\n• partnerships'),
-        inline: true,
-      },
-      {
-        name: T(ctx, '⚠️ Zasady', '⚠️ Rules'),
-        value: T(ctx,
-          '• jedno zgłoszenie naraz\n• od razu opisz sprawę\n• bez oznaczania ekipy\n• nadużycia = kara',
-          '• one ticket at a time\n• describe the issue right away\n• do not ping staff\n• abuse = punishment'),
-        inline: true,
-      },
-    );
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`tk:o:${ctx.lang}:${supportIds.join('.')}`)
-      .setLabel(custom?.button ? tr(custom.button, ctx.lang) : T(ctx, 'Otwórz zgłoszenie', 'Open a ticket'))
-      .setEmoji('🎫')
-      .setStyle(ButtonStyle.Primary),
-  );
-  return { embeds: [embed], components: [row] };
 }
 
 // ───────────────────────────── POWITANIE NA CZACIE ─────────────────────────────
@@ -369,9 +352,8 @@ function tickets(ctx) {
 function welcomeChat(ctx) {
   const tips = lines(
     ctx.ch('rules') ? T(ctx, `📜 Zacznij od ${ctx.ch('rules')}`, `📜 Start with ${ctx.ch('rules')}`) : null,
-    ctx.ch('selfroles') ? T(ctx, `🎭 Wybierz role na ${ctx.ch('selfroles')}`, `🎭 Pick roles in ${ctx.ch('selfroles')}`) : null,
+    ctx.ch('roleinfo') ? T(ctx, `🎭 Sprawdź role na ${ctx.ch('roleinfo')}`, `🎭 Check the roles in ${ctx.ch('roleinfo')}`) : null,
     ctx.ch('introductions') ? T(ctx, `🙋 Przedstaw się na ${ctx.ch('introductions')}`, `🙋 Introduce yourself in ${ctx.ch('introductions')}`) : null,
-    ctx.ch('ticketPanel') ? T(ctx, `🎫 Potrzebujesz pomocy? ${ctx.ch('ticketPanel')}`, `🎫 Need help? ${ctx.ch('ticketPanel')}`) : null,
   );
   const embed = baseEmbed(ctx)
     .setTitle(T(ctx, `🎉 ${ctx.guildName} oficjalnie wystartował!`, `🎉 ${ctx.guildName} is officially open!`))
@@ -504,7 +486,7 @@ function card(ctx, key) {
 }
 
 const RENDERERS = {
-  rules, info, faq, verify, selfroles, tickets, welcomeChat, staffGuide, boosts, partnerships, suggestions, qotd, counting,
+  rules, info, faq, verify, rolesInfo, welcomeChat, staffGuide, boosts, partnerships, suggestions, qotd, counting,
 };
 
 /** Zwraca listę wiadomości do wysłania dla danego rodzaju treści. */
@@ -522,8 +504,7 @@ const CONTENT_OPTIONS = {
   rules: { emoji: '📜', label: 'Regulamin', description: 'Pełny regulamin w #regulamin' },
   info: { emoji: 'ℹ️', label: 'Informacje o serwerze', description: 'Opis, przewodnik po kanałach, ekipa' },
   verify: { emoji: '✅', label: 'Panel weryfikacji', description: 'Przycisk „Zweryfikuj się”' },
-  selfroles: { emoji: '🎭', label: 'Panel wyboru ról', description: 'Menu z kolorami, powiadomieniami…' },
-  tickets: { emoji: '🎫', label: 'Panel ticketów', description: 'Przycisk tworzący prywatne zgłoszenia' },
+  rolesInfo: { emoji: '🎭', label: 'Opis ról', description: 'Lista ról serwera i jak je zdobyć (tekst)' },
   welcomeChat: { emoji: '🎉', label: 'Powitanie na czacie', description: 'Wiadomość startowa na #ogólny' },
   staffGuide: { emoji: '🛡️', label: 'Przewodnik ekipy', description: 'Role, zasady i checklista dla ekipy' },
   faq: { emoji: '❓', label: 'FAQ', description: 'Najczęstsze pytania i odpowiedzi' },

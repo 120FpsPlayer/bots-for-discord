@@ -81,7 +81,7 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
   const R = {
     roles: {},
     channels: {},
-    created: { roles: 0, categories: 0, channels: 0, messages: 0, automod: 0 },
+    created: { roles: 0, categories: 0, channels: 0, messages: 0, automod: 0, overwrites: 0 },
     deleted: { channels: 0, roles: 0, automod: 0 },
     warnings: [...bp.warnings],
     errors: [],
@@ -280,11 +280,13 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
       if (!category) continue;
       categoryIds[cat.key] = category.id;
       R.created.categories += 1;
+      R.created.overwrites += resolveOverwrites(cat.overwrites).length;
       for (const ch of cat.channels) {
         const channel = await createChannel(ch, category.id);
         if (channel) {
           R.channels[ch.key] = channel.id;
           R.created.channels += 1;
+          R.created.overwrites += resolveOverwrites(ch.overwrites).length;
         }
         tick(`#${ch.name}`);
       }
@@ -365,6 +367,7 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
         if (channel) {
           R.channels[ch.key] = channel.id;
           R.created.channels += 1;
+          R.created.overwrites += resolveOverwrites(ch.overwrites).length;
         }
       }
       // Przywracamy kolejność kanałów w kategoriach, do których coś dołożyliśmy.

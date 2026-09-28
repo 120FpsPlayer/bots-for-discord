@@ -69,7 +69,7 @@ const SIZE_CHANNELS = {
   huge: { slowmode: 5, voiceCount: 6, voiceLayout: 'big', afkTimeout: 900 },
 };
 
-const ALL_PANELS = ['rules', 'info', 'verify', 'selfroles', 'tickets', 'welcomeChat', 'staffGuide', 'faq', 'extras'];
+const ALL_PANELS = ['rules', 'info', 'verify', 'rolesInfo', 'welcomeChat', 'staffGuide', 'faq', 'extras'];
 
 function computeModules(preset, size, age) {
   const set = new Set(preset.modules);
@@ -193,6 +193,7 @@ function createAnswers(type = 'community') {
     permissions: { member: [], notifications: 'mentions' },
     security: { verificationLevel: 2, contentFilter: 2, automod: [] },
     channels: { slowmode: 0, voiceCount: 3, voiceLayout: 'mixed', afkTimeout: 300 },
+    channelAccess: {},
     customCategories: [],
     content: { panels: [...ALL_PANELS], community: 'full', embedColor: 'palette' },
     mode: { type: 'append', assign: true },

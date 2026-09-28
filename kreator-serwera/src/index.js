@@ -10,8 +10,6 @@ const { SessionStore } = require('./wizard/sessions');
 const { createWizard } = require('./wizard/router');
 const { runBuild, handleOriginDelete } = require('./wizard/build');
 const { handleVerification } = require('./features/verification');
-const { handleSelfRoles } = require('./features/selfRoles');
-const { handleTicket } = require('./features/tickets');
 
 const log = createLogger('bot');
 
@@ -74,12 +72,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
         break;
       case 'vf':
         if (interaction.isButton()) await handleVerification(interaction);
-        break;
-      case 'sr':
-        if (interaction.isStringSelectMenu()) await handleSelfRoles(interaction);
-        break;
-      case 'tk':
-        if (interaction.isButton()) await handleTicket(interaction);
         break;
       default:
         break;

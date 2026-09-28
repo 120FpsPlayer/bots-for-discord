@@ -7,7 +7,9 @@ const { CHANNEL_STYLES, CATEGORY_STYLES, PALETTES, EMBED_COLORS } = require('../
 const {
   VERIFICATION_LEVELS, CONTENT_FILTERS, NOTIFICATION_OPTIONS, AUTOMOD_OPTIONS,
 } = require('../data/security');
-const { MEMBER_TOGGLES } = require('../builder/permissions');
+const { MEMBER_TOGGLES, VIEW_OPTIONS, WRITE_OPTIONS, describeAccess } = require('../builder/permissions');
+const { buildBlueprint } = require('../builder/blueprint');
+const { CATEGORIES } = require('../data/modules');
 const { CONTENT_OPTIONS } = require('../builder/content');
 const N = require('../builder/naming');
 const { tr } = require('../utils/i18n');
@@ -516,7 +518,7 @@ const rolesStep = {
   id: 'roles',
   emoji: '🎭',
   title: 'Role społeczności',
-  intro: 'Wybierz role dla członków. Role oznaczone jako „do wyboru” (kolory, powiadomienia, wiek, zaimki, platformy, region, zainteresowania) trafią do panelu, w którym każdy wybierze je sam.',
+  intro: 'Wybierz role dla członków: rolę członka, role specjalne, poziomy, kolory, powiadomienia, wiek, zaimki, platformy, region. Bot utworzy je z kolorami i uporządkuje, a na kanale #role opisze, jak je zdobyć – nadaje je ekipa.',
   render(s) {
     const a = s.answers;
     const entries = roleGroupEntries(s);
@@ -527,7 +529,7 @@ const rolesStep = {
       fields: [
         field(`✅ Wybrane (${chosen.length})`, chosen.join('\n') || '*brak*'),
         field('✨ Własne role specjalne', customSpecial.join(', ') || '*brak*', true),
-        field('🔹 Własne role do wyboru', customSelf.join(', ') || '*brak*', true),
+        field('🔹 Własne role dla członków', customSelf.join(', ') || '*brak*', true),
       ],
       rows: [
         selectRow(cid(s, 's', 'groups'), {
@@ -551,7 +553,7 @@ const rolesStep = {
       return {
         modal: modal(cid(s, 'm', 'custom'), 'Własne role', [
           { id: 'special', label: 'Role specjalne (nadaje ekipa)', description: 'Jedna w linii: Nazwa, #kolor', style: 'paragraph', max: 1000, placeholder: 'Zasłużony, #F1C40F\nTwórca treści, #9146FF' },
-          { id: 'self', label: 'Role do samodzielnego wyboru', description: 'Trafią do panelu wyboru ról. Jedna w linii.', style: 'paragraph', max: 1000, placeholder: 'Szukam drużyny\nNocny marek\nStreamer' },
+          { id: 'self', label: 'Role dla członków', description: 'Np. zainteresowania – pojawią się w opisie ról. Jedna w linii.', style: 'paragraph', max: 1000, placeholder: 'Szukam drużyny\nNocny marek\nStreamer' },
         ]),
       };
     },
@@ -611,7 +613,119 @@ const permissionsStep = {
   },
 };
 
-// ───────────────────────────── 10. BEZPIECZEŃSTWO ─────────────────────────────
+// ───────────────────────────── 10. DOSTĘP DO KANAŁÓW ─────────────────────────────
+
+function sectionLabel(s, key) {
+  const p = preset(s);
+  if (key === 'special' && p.special) return { emoji: p.special.emoji, label: tr(p.special.name, 'pl') };
+  if (key === 'items' && p.list) return { emoji: p.list.categoryEmoji, label: tr(p.list.category, 'pl') };
+  const def = CATEGORIES[key];
+  return def ? { emoji: def.emoji, label: tr(def.name, 'pl') } : { emoji: '📁', label: key };
+}
+
+/** Sekcje obecne na budowanym serwerze + podsumowanie uprawnień ich kanałów. */
+function accessSections(s) {
+  const bp = buildBlueprint(s.answers, { existingChannels: 0, existingRoles: 0 });
+  const sections = new Map();
+  for (const cat of bp.categories) {
+    if (!cat.section) continue;
+    if (!sections.has(cat.section)) sections.set(cat.section, { key: cat.section, channels: [] });
+    sections.get(cat.section).channels.push(...cat.channels);
+  }
+  for (const sec of sections.values()) {
+    const counts = new Map();
+    for (const ch of sec.channels) {
+      const label = describeAccess(ch.access, ch.kind).text;
+      counts.set(label, (counts.get(label) || 0) + 1);
+    }
+    sec.summary = [...counts.entries()].map(([label, n]) => `${label}${n > 1 ? ` (×${n})` : ''}`);
+    sec.voiceOnly = sec.channels.every((c) => c.kind === 'voice' || c.kind === 'stage');
+  }
+  return { bp, sections: [...sections.values()] };
+}
+
+const accessStep = {
+  id: 'access',
+  emoji: '🔑',
+  title: 'Dostęp do kanałów',
+  intro: 'Tu decydujesz, **kto widzi** kanały i **kto może w nich pisać** (na głosowych: mówić). Kreator już ustawia zalecane uprawnienia – np. ogłoszenia tylko do odczytu, kanały ekipy ukryte. Zmień tylko to, co chcesz inaczej: wybierz sekcję, a potem ustawienia.',
+  render(s) {
+    const { bp, sections } = accessSections(s);
+    const overrides = s.answers.channelAccess || {};
+    if (!sections.length) {
+      return { fields: [field('📭 Brak sekcji', 'Najpierw wybierz sekcje serwera w kroku „Sekcje serwera”.')], rows: [] };
+    }
+    if (!sections.some((sec) => sec.key === s.accessSection)) s.accessSection = sections[0].key;
+    const current = sections.find((sec) => sec.key === s.accessSection);
+    const ov = overrides[current.key] || {};
+    const fields = sections.slice(0, 20).map((sec) => {
+      const { emoji, label } = sectionLabel(s, sec.key);
+      const changed = overrides[sec.key] && (overrides[sec.key].view !== 'default' || overrides[sec.key].write !== 'default');
+      const marker = sec.key === current.key ? '▶️ ' : '';
+      return field(`${marker}${emoji} ${label}${changed ? ' ✏️' : ''}`, sec.summary.join('\n'));
+    });
+    fields.push(field('🔒 Zawsze chronione', 'Kanał weryfikacji, regulamin (przy weryfikacji), kanał zarządu i prywatne kanały ról zachowują swoje uprawnienia – inaczej serwer przestałby działać poprawnie.'));
+    const { emoji, label } = sectionLabel(s, current.key);
+    const gate = bp.meta.gate;
+    return {
+      lines: [`**Edytujesz:** ${emoji} **${label}** (${current.channels.length} kanałów) · ✏️ = zmienione przez Ciebie`],
+      fields,
+      rows: [
+        selectRow(cid(s, 's', 'section'), {
+          placeholder: 'Wybierz sekcję do zmiany…',
+          options: sections.map((sec) => {
+            const l = sectionLabel(s, sec.key);
+            return { value: sec.key, label: l.label, emoji: l.emoji, description: clip(sec.summary.join(' | '), 100), default: sec.key === current.key };
+          }),
+        }),
+        selectRow(cid(s, 's', 'view'), {
+          placeholder: `👁️ Kto widzi sekcję „${label}”?`,
+          options: [
+            { value: 'default', label: 'Zalecane przez kreator', description: 'Uprawnienia dobrane do każdego kanału osobno', emoji: '⭐', default: !VIEW_OPTIONS[ov.view] },
+            ...Object.entries(VIEW_OPTIONS)
+              .filter(([k]) => k !== 'unverified' || gate)
+              .map(([k, o]) => ({ value: k, label: o.label, description: o.description, emoji: o.emoji, default: ov.view === k })),
+          ],
+        }),
+        selectRow(cid(s, 's', 'write'), {
+          placeholder: current.voiceOnly ? `🎙️ Kto może mówić w „${label}”?` : `✍️ Kto może pisać w „${label}”?`,
+          options: [
+            { value: 'default', label: 'Zalecane przez kreator', description: 'Uprawnienia dobrane do każdego kanału osobno', emoji: '⭐', default: !WRITE_OPTIONS[ov.write] },
+            ...Object.entries(WRITE_OPTIONS)
+              .filter(([k]) => !(current.voiceOnly && k === 'threads'))
+              .map(([k, o]) => ({ value: k, label: current.voiceOnly ? o.label.replace('pisać', 'mówić').replace('pisze', 'mówi') : o.label, description: o.description, emoji: o.emoji, default: ov.write === k })),
+          ],
+        }),
+        row(
+          button(cid(s, 'b', 'reset'), 'Zalecane dla tej sekcji', { emoji: '↩️', disabled: !overrides[current.key] }),
+          button(cid(s, 'b', 'resetall'), 'Przywróć wszystko', { emoji: '🧹', disabled: !Object.keys(overrides).length }),
+        ),
+      ],
+    };
+  },
+  select: {
+    section(s, [v]) { s.accessSection = v; },
+    view(s, [v]) { setAccess(s, 'view', v); },
+    write(s, [v]) { setAccess(s, 'write', v); },
+  },
+  button: {
+    reset(s) { if (s.answers.channelAccess) delete s.answers.channelAccess[s.accessSection]; },
+    resetall(s) { s.answers.channelAccess = {}; },
+  },
+};
+
+function setAccess(s, field_, value) {
+  const valid = field_ === 'view' ? VIEW_OPTIONS : WRITE_OPTIONS;
+  if (value !== 'default' && !valid[value]) return;
+  if (!s.accessSection) return;
+  s.answers.channelAccess ??= {};
+  const entry = s.answers.channelAccess[s.accessSection] || { view: 'default', write: 'default' };
+  entry[field_] = value;
+  if (entry.view === 'default' && entry.write === 'default') delete s.answers.channelAccess[s.accessSection];
+  else s.answers.channelAccess[s.accessSection] = entry;
+}
+
+// ───────────────────────────── 11. BEZPIECZEŃSTWO ─────────────────────────────
 
 const securityStep = {
   id: 'security',
@@ -655,7 +769,7 @@ const securityStep = {
   },
 };
 
-// ───────────────────────────── 11. KANAŁY ─────────────────────────────
+// ───────────────────────────── 12. KANAŁY ─────────────────────────────
 
 const SLOWMODES = [0, 3, 5, 10, 15, 30, 60, 120];
 const AFK_TIMEOUTS = [[60, '1 minuta'], [300, '5 minut'], [900, '15 minut'], [1800, '30 minut'], [3600, '1 godzina']];
@@ -713,7 +827,7 @@ const channelsStep = {
   },
 };
 
-// ───────────────────────────── 12. WŁASNE KATEGORIE ─────────────────────────────
+// ───────────────────────────── 13. WŁASNE KATEGORIE ─────────────────────────────
 
 const ACCESS = {
   public: { emoji: '🌍', label: 'Publiczna', description: 'Widoczna dla wszystkich członków' },
@@ -778,7 +892,7 @@ const customStep = {
   },
 };
 
-// ───────────────────────────── 13. TREŚCI ─────────────────────────────
+// ───────────────────────────── 14. TREŚCI ─────────────────────────────
 
 const COMMUNITY_OPTIONS = {
   full: { emoji: '🌟', label: 'Społeczność + ekran powitalny', description: 'Kanały ogłoszeń, sceny, ekran powitalny (zalecane)' },
@@ -789,8 +903,8 @@ const COMMUNITY_OPTIONS = {
 const contentStep = {
   id: 'content',
   emoji: '📨',
-  title: 'Wiadomości i panele',
-  intro: 'Bot może od razu opublikować gotowe treści: regulamin, informacje, panel weryfikacji z przyciskiem, panel wyboru ról, system ticketów i przewodnik dla ekipy.',
+  title: 'Wiadomości',
+  intro: 'Bot może od razu opublikować gotowe treści tekstowe: regulamin, informacje o serwerze, opis ról, FAQ, przewodnik dla ekipy oraz panel weryfikacji z przyciskiem.',
   render(s) {
     const a = s.answers;
     const chosen = Object.entries(CONTENT_OPTIONS).filter(([k]) => a.content.panels.includes(k));
@@ -800,7 +914,7 @@ const contentStep = {
         field(`📨 Publikowane treści (${chosen.length})`, chosen.map(([, o]) => `${o.emoji} ${o.label}`).join('\n') || '*nic – serwer będzie pusty*'),
         field('🌟 Tryb Społeczności', `${COMMUNITY_OPTIONS[a.content.community].emoji} ${COMMUNITY_OPTIONS[a.content.community].label}`, true),
         field('🎨 Kolor wiadomości', `${color.emoji} ${color.label}`, true),
-        field('ℹ️ Panele działają na stałe', 'Przyciski weryfikacji, menu ról i tickety obsługuje ten bot – musi być online, aby działały.'),
+        field('ℹ️ Weryfikacja', 'Przycisk „Zweryfikuj się” obsługuje ten bot – musi być online, aby działał. Pozostałe wiadomości to zwykły tekst.'),
       ],
       rows: [
         selectRow(cid(s, 's', 'panels'), {
@@ -827,7 +941,7 @@ const contentStep = {
   },
 };
 
-// ───────────────────────────── 14. TRYB BUDOWY ─────────────────────────────
+// ───────────────────────────── 15. TRYB BUDOWY ─────────────────────────────
 
 const modeStep = {
   id: 'mode',
@@ -879,7 +993,7 @@ const modeStep = {
 
 const STEPS = [
   typeStep, basicsStep, profileStep, styleStep, modulesStep, specialStep, staffStep, rolesStep,
-  permissionsStep, securityStep, channelsStep, customStep, contentStep, modeStep,
+  permissionsStep, accessStep, securityStep, channelsStep, customStep, contentStep, modeStep,
 ];
 
 const STEP_INDEX = Object.fromEntries(STEPS.map((step, i) => [step.id, i]));

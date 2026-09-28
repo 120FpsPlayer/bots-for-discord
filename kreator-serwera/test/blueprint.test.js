@@ -9,7 +9,7 @@ const { SERVER_TYPES } = require('../src/data/serverTypes');
 const { CHANNEL_STYLES, CATEGORY_STYLES, PALETTES } = require('../src/data/styles');
 const { MODULES } = require('../src/data/modules');
 const { ROLE_GROUP_OPTIONS, STAFF_ROLES } = require('../src/data/roles');
-const { MEMBER_TOGGLES } = require('../src/builder/permissions');
+const { MEMBER_TOGGLES, VIEW_OPTIONS, WRITE_OPTIONS, VIEW_LABELS, WRITE_LABELS } = require('../src/builder/permissions');
 const { AUTOMOD_OPTIONS } = require('../src/data/security');
 
 const TYPES = Object.keys(SERVER_TYPES);
@@ -72,6 +72,8 @@ function assertValidBlueprint(bp, label) {
         for (const t of ch.tags) assert.ok(t.name.length >= 1 && t.name.length <= 20, ctx(`zła nazwa tagu ${t.name}`));
       }
       checkOverwrites(ch.overwrites, ch.name);
+      assert.ok(VIEW_LABELS[ch.access?.view], ctx(`kanał ${ch.name} bez opisu „kto widzi”`));
+      assert.ok(WRITE_LABELS[ch.access?.write], ctx(`kanał ${ch.name} bez opisu „kto pisze”`));
     }
   }
   assert.ok(total <= 500, ctx('za dużo kanałów'));
@@ -79,8 +81,6 @@ function assertValidBlueprint(bp, label) {
 
   // Wiadomości, AutoMod, ustawienia
   for (const m of bp.messages) assert.ok(channelKeys.has(m.channel), ctx(`wiadomość do nieistniejącego kanału ${m.channel}`));
-  for (const key of bp.ticketSupport) assert.ok(roleKeys.has(key), ctx('zła rola wsparcia ticketów'));
-  assert.ok(bp.ticketSupport.length <= 4, ctx('za dużo ról wsparcia'));
   for (const rule of bp.automod) {
     assert.ok(rule.name.length <= 100, ctx('nazwa reguły AutoMod'));
     assert.ok(rule.exemptRoles.length <= 20, ctx('za dużo ról wyłączonych z AutoMod'));
@@ -275,4 +275,89 @@ test('limit ról w trybie dodawania uwzględnia istniejące role', () => {
   assert.ok(bp.errors.some((e) => /Za dużo ról/.test(e)));
   a.mode.type = 'wipe';
   assert.ok(!buildBlueprint(a, { existingRoles: 240 }).errors.length, 'w trybie czyszczenia istniejące role nie liczą się');
+});
+
+// ───────────── Dostęp do kanałów (krok „Dostęp do kanałów”) ─────────────
+
+const everyoneOf = (ch) => ch.overwrites.find((o) => o.target === '@everyone') || { allow: [], deny: [] };
+const channelsOf = (bp, section) => bp.categories.filter((c) => c.section === section).flatMap((c) => c.channels);
+
+test('dostęp: „tylko odczyt” w społeczności blokuje pisanie wszystkim poza zarządem i botami', () => {
+  const a = createAnswers('gaming');
+  a.channelAccess = { community: { view: 'default', write: 'readonly' } };
+  const bp = buildBlueprint(a);
+  assertValidBlueprint(bp, 'community/readonly');
+  for (const ch of channelsOf(bp, 'community')) {
+    assert.ok(everyoneOf(ch).deny.includes('SendMessages'), `#${ch.name} nadal pozwala pisać`);
+    assert.ok(ch.overwrites.some((o) => o.target === 'admin' && o.allow.includes('SendMessages')), `#${ch.name}: zarząd nie może pisać`);
+    assert.equal(ch.access.write, 'readonly');
+  }
+});
+
+test('dostęp: „tylko ekipa” ukrywa sekcję przed członkami, a weryfikacja i regulamin zostają widoczne', () => {
+  const a = createAnswers('gaming');
+  a.modules = [...new Set([...a.modules, 'verification'])];
+  a.channelAccess = { info: { view: 'staff', write: 'default' }, voice: { view: 'staff', write: 'default' } };
+  const bp = buildBlueprint(a);
+  assertValidBlueprint(bp, 'info+voice/staff');
+  for (const ch of channelsOf(bp, 'voice')) {
+    assert.ok(everyoneOf(ch).deny.includes('ViewChannel'), `🔊 ${ch.name} widoczny dla wszystkich`);
+    assert.ok(ch.overwrites.some((o) => o.target === 'mod' && o.allow.includes('ViewChannel')));
+  }
+  const info = channelsOf(bp, 'info');
+  const verify = info.find((c) => c.key === 'verify');
+  const rules = info.find((c) => c.key === 'rules');
+  assert.ok(everyoneOf(verify).allow.includes('ViewChannel'), 'kanał weryfikacji musi zostać widoczny');
+  assert.ok(everyoneOf(rules).allow.includes('ViewChannel'), 'regulamin musi zostać widoczny przed weryfikacją');
+  assert.ok(everyoneOf(info.find((c) => c.key === 'info')).deny.includes('ViewChannel'));
+  const cat = bp.categories.find((c) => c.section === 'voice');
+  assert.ok(everyoneOf(cat).deny.includes('ViewChannel'), 'kategoria też ukryta – nowe kanały odziedziczą dostęp');
+});
+
+test('dostęp: kanały głosowe „tylko odczyt” = członkowie słuchają, zarząd mówi; AFK zostaje bez mówienia', () => {
+  const a = createAnswers('community');
+  a.channelAccess = { voice: { view: 'default', write: 'readonly' } };
+  const bp = buildBlueprint(a);
+  for (const ch of channelsOf(bp, 'voice')) {
+    assert.ok(everyoneOf(ch).deny.includes('Speak'), `${ch.name}: członkowie nadal mówią`);
+    if (ch.key !== 'afk') assert.ok(ch.overwrites.some((o) => o.target === 'admin' && o.allow.includes('Speak')));
+  }
+  assert.equal(channelsOf(bp, 'voice').find((c) => c.key === 'afk').access.write, 'listen');
+});
+
+test('dostęp: „także przed weryfikacją” pozwala niezweryfikowanym widzieć i pisać', () => {
+  const a = createAnswers('gaming');
+  a.modules = [...new Set([...a.modules, 'verification'])];
+  a.channelAccess = { community: { view: 'unverified', write: 'all' } };
+  const bp = buildBlueprint(a);
+  const general = channelsOf(bp, 'community').find((c) => c.key === 'general');
+  assert.ok(everyoneOf(general).allow.includes('ViewChannel'));
+  assert.ok(everyoneOf(general).allow.includes('SendMessages'));
+});
+
+test('dostęp: kanał zarządu i prywatne kanały ról nie zmieniają się przy ustawieniach sekcji', () => {
+  const a = createAnswers('business');
+  const before = buildBlueprint(a);
+  a.channelAccess = { staff: { view: 'members', write: 'all' }, items: { view: 'members', write: 'all' } };
+  const after = buildBlueprint(a);
+  const find = (bp, key) => bp.categories.flatMap((c) => c.channels).find((c) => c.key === key);
+  assert.deepEqual(find(after, 'management').overwrites, find(before, 'management').overwrites);
+  assert.deepEqual(find(after, 'item0t').overwrites, find(before, 'item0t').overwrites);
+  assert.ok(!everyoneOf(find(after, 'staffChat')).deny.includes('ViewChannel'), 'czat ekipy stał się widoczny zgodnie z wyborem');
+});
+
+test('dostęp: wszystkie kombinacje dla każdej sekcji dają poprawny blueprint', () => {
+  const views = ['default', ...Object.keys(VIEW_OPTIONS)];
+  const writes = ['default', ...Object.keys(WRITE_OPTIONS)];
+  const sections = ['info', 'news', 'special', 'community', 'items', 'voice', 'vip', 'staff', 'logs', 'archive'];
+  for (const type of ['gaming', 'business', 'creator']) {
+    for (let i = 0; i < views.length * writes.length; i += 1) {
+      const a = createAnswers(type);
+      a.size = 'huge';
+      applyDefaults(a);
+      a.modules = [...new Set([...a.modules, 'verification'])];
+      a.channelAccess = Object.fromEntries(sections.map((sec, j) => [sec, { view: views[(i + j) % views.length], write: writes[Math.floor(i / views.length + j) % writes.length] }]));
+      assertValidBlueprint(buildBlueprint(a), `${type}/combo${i}`);
+    }
+  }
 });
