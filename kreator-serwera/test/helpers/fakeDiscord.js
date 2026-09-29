@@ -365,7 +365,13 @@ class FakeGuild {
           if (a.metadata?.customMessage && a.metadata.customMessage.length > 150) throw apiError(50035, 'custom message too long');
           if (a.type === 3 && ![1, 5].includes(data.triggerType)) throw apiError(50035, 'timeout not allowed for this trigger');
         }
-        if ([3, 4, 5].includes(data.triggerType) && [...this.cache.values()].some((r) => r.triggerType === data.triggerType)) {
+        if (data.triggerType === 6) {
+          if (data.eventType !== 2) throw apiError(50035, 'member profile rules need MEMBER_UPDATE event');
+          if (data.actions.some((x) => ![2, 4].includes(x.type))) throw apiError(50035, 'member profile rules allow only block interaction + alert');
+        } else if (data.eventType !== 1 || data.actions.some((x) => x.type === 4)) {
+          throw apiError(50035, 'message rules need MESSAGE_SEND and no block-interaction action');
+        }
+        if ([3, 4, 5, 6].includes(data.triggerType) && [...this.cache.values()].some((r) => r.triggerType === data.triggerType)) {
           throw apiError(30035, 'rule of this type already exists');
         }
         const rule = { id: nextId(), name: data.name, triggerType: data.triggerType, data, delete: async () => { this.cache.delete(rule.id); } };
@@ -398,6 +404,7 @@ class FakeGuild {
         if ((data.explicitContentFilter ?? this.settings.explicitContentFilter ?? 0) !== 2) throw apiError(50101, 'content filter');
       }
       this.features = [...new Set(data.features)];
+      if (!this.features.includes('COMMUNITY')) this.protectedChannels.clear();
     }
     if (data.description && !this.features.includes('COMMUNITY')) throw apiError(50035, 'description requires community');
     if (this.features.includes('COMMUNITY') && data.verificationLevel !== undefined && data.verificationLevel < 1) throw apiError(50101, 'community needs verification');

@@ -6,6 +6,7 @@ const {
 const { L, tr, fill } = require('../utils/i18n');
 const { SERVER_TYPES } = require('../data/serverTypes');
 const { STAFF_LEVELS } = require('../data/roles');
+const { verifyButtonId } = require('../features/verification');
 
 /**
  * Generuje wiadomości publikowane przez bota na zbudowanym serwerze.
@@ -42,16 +43,107 @@ function contactStaff(ctx) {
 
 // ───────────────────────────── REGULAMIN ─────────────────────────────
 
+/** Style systemu kar do wyboru w kroku „Regulamin i treści”. */
+const PUNISHMENT_STYLES = {
+  ladder: { emoji: '🪜', label: 'Stopniowanie kar', description: 'Ostrzeżenie → wyciszenie → wyrzucenie → ban' },
+  points: { emoji: '🔢', label: 'Punkty ostrzeżeń', description: 'Kary za zebrane punkty, punkty wygasają po 30 dniach' },
+  strict: { emoji: '⛔', label: 'Zero tolerancji', description: 'Poważne naruszenia = ban bez ostrzeżenia' },
+};
+
+/** Sekcje regulaminu do wyboru. */
+const RULE_SECTIONS = {
+  general: { emoji: '📋', label: 'Postanowienia ogólne', description: 'ToS Discorda, minimalny wiek, zmiany regulaminu' },
+  behaviour: { emoji: '🤝', label: 'Kultura i zachowanie', description: 'Szacunek, spam, trolling, podszywanie się' },
+  content: { emoji: '🖼️', label: 'Treści', description: 'NSFW, dane osobowe, scamy, reklama, piractwo' },
+  voice: { emoji: '🔊', label: 'Kanały głosowe', description: 'Krzyki, nagrywanie, skakanie po kanałach' },
+  profile: { emoji: '🏷️', label: 'Profil i nick', description: 'Nicki, avatary i opisy bez obraźliwych treści' },
+  type: { emoji: '⭐', label: 'Zasady typu serwera', description: 'Np. zasady graczy, RP, sklepu, nauki' },
+  punishments: { emoji: '⚖️', label: 'Kary i administracja', description: 'System kar, odwołania, omijanie kar' },
+};
+
+function punishmentItems(ctx, style) {
+  const appeal = contactStaff(ctx);
+  if (style === 'points') {
+    return T(ctx, [
+      'Za łamanie regulaminu otrzymujesz punkty ostrzeżeń (1–5 pkt zależnie od wagi przewinienia).',
+      '**3 pkt** – wyciszenie na 1 godzinę • **5 pkt** – wyciszenie na 24 godziny • **7 pkt** – wyrzucenie • **10 pkt** – ban.',
+      'Punkty wygasają po 30 dniach bez kolejnych naruszeń.',
+      `Decyzje administracji są wiążące. Aby się odwołać, ${appeal}.`,
+      'Omijanie kar (np. multikonta) skutkuje permanentnym banem.',
+    ], [
+      'Breaking the rules gives you warning points (1–5 depending on severity).',
+      '**3 pts** – 1 hour timeout • **5 pts** – 24 hour timeout • **7 pts** – kick • **10 pts** – ban.',
+      'Points expire after 30 days without new violations.',
+      `Staff decisions are binding. To appeal, ${appeal}.`,
+      'Evading punishments (e.g. alt accounts) results in a permanent ban.',
+    ]);
+  }
+  if (style === 'strict') {
+    return T(ctx, [
+      'Nękanie, groźby, treści NSFW, doxxing, scam i rajdy = **natychmiastowy ban bez ostrzeżenia**.',
+      'Pozostałe naruszenia: jedno ostrzeżenie, kolejne = ban.',
+      `Decyzje administracji są ostateczne. W wyjątkowych sytuacjach ${appeal}.`,
+      'Omijanie kar (np. multikonta) skutkuje permanentnym banem wszystkich kont.',
+    ], [
+      'Harassment, threats, NSFW, doxxing, scams and raids = **instant ban without warning**.',
+      'Other violations: one warning, the next one is a ban.',
+      `Staff decisions are final. In exceptional cases, ${appeal}.`,
+      'Evading punishments (e.g. alt accounts) results in a permanent ban of all accounts.',
+    ]);
+  }
+  return T(ctx, [
+    'Stopniowanie kar: ostrzeżenie → wyciszenie (timeout) → wyrzucenie → ban. Przy poważnych przewinieniach administracja może pominąć etapy.',
+    `Decyzje administracji są wiążące. Aby się odwołać, ${appeal}.`,
+    'Nie oznaczaj administracji bez ważnego powodu.',
+    'Omijanie kar (np. multikonta) skutkuje permanentnym banem.',
+  ], [
+    'Punishment ladder: warning → timeout → kick → ban. Serious offences may skip steps.',
+    `Staff decisions are binding. To appeal, ${appeal}.`,
+    'Do not ping staff without a good reason.',
+    'Evading punishments (e.g. alt accounts) results in a permanent ban.',
+  ]);
+}
+
+/**
+ * Pakuje pola embedów w wiadomości tak, żeby zmieścić się w limitach Discorda
+ * (6000 znaków na wszystkie embedy wiadomości, 25 pól na embed).
+ */
+function packFields(ctx, fields, { title, description, footer }) {
+  const messages = [];
+  let embed = null;
+  let size = 0;
+  for (const f of fields) {
+    const len = f.name.length + f.value.length;
+    if (!embed || size + len > 5000 || embed.data.fields?.length >= 24) {
+      embed = baseEmbed(ctx);
+      size = 0;
+      if (!messages.length) {
+        embed.setTitle(title);
+        if (description) embed.setDescription(description);
+        size = title.length + (description?.length || 0);
+      }
+      if (footer) embed.setFooter({ text: footer });
+      messages.push({ embeds: [embed] });
+    }
+    embed.addFields(f);
+    size += len;
+  }
+  return messages;
+}
+
 function rules(ctx) {
   const { answers } = ctx;
+  const texts = answers.texts || {};
+  const chosen = new Set(texts.ruleSections || Object.keys(RULE_SECTIONS));
   const preset = SERVER_TYPES[answers.type];
   const minAge = Number(answers.age) || 13;
   const announcements = ctx.ch('announcements') || ctx.ch('changelog') || T(ctx, 'kanale ogłoszeń', 'the announcements channel');
   const nsfwAllowed = Boolean(ctx.ch('nsfw'));
 
-  const sections = [
-    {
-      name: T(ctx, '§1 • Postanowienia ogólne', '§1 • General'),
+  const sections = [];
+  if (chosen.has('general')) {
+    sections.push({
+      name: T(ctx, 'Postanowienia ogólne', 'General'),
       items: T(ctx, [
         'Przebywając na serwerze, akceptujesz ten regulamin oraz [Warunki korzystania z usługi Discord](https://discord.com/terms) i [Wytyczne dla społeczności](https://discord.com/guidelines).',
         'Nieznajomość regulaminu nie zwalnia z obowiązku jego przestrzegania.',
@@ -63,9 +155,11 @@ function rules(ctx) {
         `Minimum age on this server is **${minAge}**.`,
         `Staff may update the rules – changes are announced in ${announcements}.`,
       ]),
-    },
-    {
-      name: T(ctx, '§2 • Kultura i zachowanie', '§2 • Behaviour'),
+    });
+  }
+  if (chosen.has('behaviour')) {
+    sections.push({
+      name: T(ctx, 'Kultura i zachowanie', 'Behaviour'),
       items: T(ctx, [
         'Szanuj innych. Zakazane są obelgi, nękanie, groźby oraz dyskryminacja (m.in. ze względu na pochodzenie, płeć, orientację, religię czy niepełnosprawność).',
         'Zakaz spamu, floodu, nadużywania CAPS LOCKA, emoji i oznaczeń.',
@@ -79,9 +173,11 @@ function rules(ctx) {
         'Use channels for their intended purpose (see channel topics).',
         'Do not impersonate other users, staff or public figures.',
       ]),
-    },
-    {
-      name: T(ctx, '§3 • Treści', '§3 • Content'),
+    });
+  }
+  if (chosen.has('content')) {
+    sections.push({
+      name: T(ctx, 'Treści', 'Content'),
       items: T(ctx, [
         nsfwAllowed
           ? `Treści NSFW są dozwolone wyłącznie na ${ctx.ch('nsfw')}. Treści drastyczne i nielegalne są zakazane wszędzie.`
@@ -99,12 +195,11 @@ function rules(ctx) {
         'No advertising without staff permission – including DMs.',
         'No illegal content, including piracy.',
       ]),
-    },
-  ];
-
-  if (ctx.blueprint.stats.voice > 0) {
+    });
+  }
+  if (chosen.has('voice') && ctx.blueprint.stats.voice > 0) {
     sections.push({
-      name: T(ctx, '§4 • Kanały głosowe', '§4 • Voice channels'),
+      name: T(ctx, 'Kanały głosowe', 'Voice channels'),
       items: T(ctx, [
         'Zakaz krzyczenia, przesterowanego mikrofonu, modulatorów głosu i soundboardu w celu przeszkadzania.',
         'Zakaz nagrywania rozmów bez zgody wszystkich uczestników.',
@@ -116,52 +211,71 @@ function rules(ctx) {
       ]),
     });
   }
-
-  sections.push({
-    name: T(ctx, `§${sections.length + 1} • Profil i nick`, `§${sections.length + 1} • Profile & nickname`),
-    items: T(ctx, [
-      'Nick, avatar, status i opis nie mogą zawierać treści obraźliwych, NSFW ani reklam.',
-      'Nick musi dać się oznaczyć – bez samych znaków specjalnych.',
-    ], [
-      'Nickname, avatar, status and bio must not be offensive, NSFW or contain ads.',
-      'Your nickname must be mentionable – no special-characters-only names.',
-    ]),
-  });
-
-  if (preset?.rules) {
+  if (chosen.has('profile')) {
     sections.push({
-      name: `§${sections.length + 1} • ${tr(preset.rules.title, ctx.lang)}`,
-      items: preset.rules.items[ctx.lang] ?? preset.rules.items.pl,
+      name: T(ctx, 'Profil i nick', 'Profile & nickname'),
+      items: T(ctx, [
+        'Nick, avatar, status i opis nie mogą zawierać treści obraźliwych, NSFW ani reklam.',
+        'Nick musi dać się oznaczyć – bez samych znaków specjalnych.',
+      ], [
+        'Nickname, avatar, status and bio must not be offensive, NSFW or contain ads.',
+        'Your nickname must be mentionable – no special-characters-only names.',
+      ]),
     });
   }
-
-  sections.push({
-    name: T(ctx, `§${sections.length + 1} • Kary i administracja`, `§${sections.length + 1} • Punishments & staff`),
-    items: T(ctx, [
-      'Stopniowanie kar: ostrzeżenie → wyciszenie (timeout) → wyrzucenie → ban. Przy poważnych przewinieniach administracja może pominąć etapy.',
-      'Decyzje administracji są wiążące. Aby się odwołać, ' + contactStaff(ctx) + '.',
-      'Nie oznaczaj administracji bez ważnego powodu.',
-      'Omijanie kar (np. multikonta) skutkuje permanentnym banem.',
-    ], [
-      'Punishment ladder: warning → timeout → kick → ban. Serious offences may skip steps.',
-      'Staff decisions are binding. To appeal, ' + contactStaff(ctx) + '.',
-      'Do not ping staff without a good reason.',
-      'Evading punishments (e.g. alt accounts) results in a permanent ban.',
-    ]),
-  });
-
-  const embed = baseEmbed(ctx)
-    .setTitle(T(ctx, `📜 Regulamin serwera ${ctx.guildName}`, `📜 ${ctx.guildName} rules`))
-    .setDescription(T(ctx,
-      'Prosimy o uważne zapoznanie się z zasadami. Dzięki nim serwer jest bezpiecznym i przyjaznym miejscem dla wszystkich. 💙',
-      'Please read the rules carefully. They keep this server safe and friendly for everyone. 💙'));
-
-  for (const section of sections.slice(0, 24)) {
-    const value = section.items.map((item, i) => `**${i + 1}.** ${item}`).join('\n');
-    embed.addFields({ name: section.name, value: truncate(value, 1024) });
+  if (chosen.has('type') && preset?.rules) {
+    sections.push({ name: tr(preset.rules.title, ctx.lang), items: preset.rules.items[ctx.lang] ?? preset.rules.items.pl });
   }
-  embed.setFooter({ text: T(ctx, `Regulamin obowiązuje od ${ctx.date}`, `Rules effective since ${ctx.date}`) });
-  return { embeds: [embed] };
+  const custom = (texts.customRules || []).filter(Boolean);
+  if (custom.length) sections.push({ name: T(ctx, 'Zasady dodatkowe', 'Additional rules'), items: custom });
+  if (chosen.has('punishments')) {
+    sections.push({ name: T(ctx, 'Kary i administracja', 'Punishments & staff'), items: punishmentItems(ctx, texts.punishments) });
+  }
+  if (!sections.length) return null;
+
+  // Treść paragrafu może przekroczyć 1024 znaki – dzielimy go wtedy na kolejne pola „(cd.)”.
+  const fields = [];
+  sections.forEach((section, index) => {
+    const name = `§${index + 1} • ${section.name}`;
+    let chunk = '';
+    let part = 0;
+    section.items.forEach((item, i) => {
+      const line = `**${i + 1}.** ${truncate(item, 1000)}`;
+      if (chunk && chunk.length + line.length + 1 > 1024) {
+        fields.push({ name: part ? `${name} ${T(ctx, '(cd.)', '(cont.)')}` : name, value: chunk });
+        chunk = '';
+        part += 1;
+      }
+      chunk = chunk ? `${chunk}\n${line}` : line;
+    });
+    if (chunk) fields.push({ name: part ? `${name} ${T(ctx, '(cd.)', '(cont.)')}` : name, value: chunk });
+  });
+  return packFields(ctx, fields, {
+    title: T(ctx, `📜 Regulamin serwera ${ctx.guildName}`, `📜 ${ctx.guildName} rules`),
+    description: T(ctx,
+      'Prosimy o uważne zapoznanie się z zasadami. Dzięki nim serwer jest bezpiecznym i przyjaznym miejscem dla wszystkich. 💙',
+      'Please read the rules carefully. They keep this server safe and friendly for everyone. 💙'),
+    footer: T(ctx, `Regulamin obowiązuje od ${ctx.date}`, `Rules effective since ${ctx.date}`),
+  });
+}
+
+/** Pierwsze ogłoszenie napisane przez użytkownika w kreatorze. */
+function announcement(ctx) {
+  const a = ctx.answers.texts?.announcement;
+  if (!a?.text?.trim()) return null;
+  const embed = baseEmbed(ctx)
+    .setTitle(truncate(a.title?.trim() || T(ctx, `📢 Witamy na ${ctx.guildName}!`, `📢 Welcome to ${ctx.guildName}!`), 256))
+    .setDescription(truncate(a.text.trim(), 4000));
+  let content;
+  const allowedMentions = { parse: [] };
+  if (a.ping === 'everyone') {
+    content = '@everyone';
+    allowedMentions.parse = ['everyone'];
+  } else if (a.ping === 'role' && ctx.roleId('n_announcements')) {
+    content = `<@&${ctx.roleId('n_announcements')}>`;
+    allowedMentions.roles = [ctx.roleId('n_announcements')];
+  }
+  return { content, embeds: [embed], allowedMentions };
 }
 
 // ───────────────────────────── INFORMACJE ─────────────────────────────
@@ -235,11 +349,12 @@ function faq(ctx) {
     ['Can I advertise my server?', ctx.ch('partnerships') ? `Only via partnership – see ${ctx.ch('partnerships')}.` : 'No, advertising without permission is not allowed.'],
     ['I got punished – what now?', `Read the rules. If you think it was unfair, ${contactStaff(ctx)}.`],
   ]);
-  const embed = baseEmbed(ctx)
-    .setTitle(T(ctx, '❓ Najczęściej zadawane pytania', '❓ Frequently asked questions'))
-    .setDescription(T(ctx, 'Nie znalazłeś odpowiedzi? Zapytaj na czacie lub skontaktuj się z ekipą.', 'Can\'t find an answer? Ask in chat or contact the staff.'));
-  for (const [q, a] of qa) embed.addFields({ name: `❔ ${q}`, value: a });
-  return { embeds: [embed] };
+  const custom = (ctx.answers.texts?.customFaq || []).map((e) => [e.q, e.a]);
+  const entries = ctx.answers.texts?.faqDefaults === false && custom.length ? custom : [...qa, ...custom];
+  return packFields(ctx, entries.map(([q, a]) => ({ name: truncate(`❔ ${q}`, 256), value: truncate(a, 1024) })), {
+    title: T(ctx, '❓ Najczęściej zadawane pytania', '❓ Frequently asked questions'),
+    description: T(ctx, 'Nie znalazłeś odpowiedzi? Zapytaj na czacie lub skontaktuj się z ekipą.', 'Can\'t find an answer? Ask in chat or contact the staff.'),
+  });
 }
 
 // ───────────────────────────── WERYFIKACJA ─────────────────────────────
@@ -247,15 +362,31 @@ function faq(ctx) {
 function verify(ctx) {
   const roleId = ctx.roleId('member');
   if (!roleId) return null;
+  const v = ctx.blueprint.meta.verify || {};
+  const steps = [
+    T(ctx, `Przeczytaj ${ctx.ch('rules') || 'regulamin'}`, `Read ${ctx.ch('rules') || 'the rules'}`),
+    T(ctx, 'Kliknij przycisk **Zweryfikuj się** poniżej', 'Click **Verify** below'),
+  ];
+  if (v.captcha) steps.push(T(ctx, 'Odpowiedz na krótkie pytanie kontrolne (ochrona przed botami)', 'Answer a short check question (bot protection)'));
   const embed = baseEmbed(ctx)
     .setTitle(T(ctx, '✅ Weryfikacja', '✅ Verification'))
     .setDescription(T(ctx,
-      `Witaj na serwerze **${ctx.guildName}**! 👋\n\nAby uzyskać dostęp do wszystkich kanałów:\n**1.** Przeczytaj ${ctx.ch('rules') || 'regulamin'}\n**2.** Kliknij przycisk **Zweryfikuj się** poniżej\n\nKlikając przycisk, potwierdzasz, że akceptujesz regulamin serwera.`,
-      `Welcome to **${ctx.guildName}**! 👋\n\nTo access all channels:\n**1.** Read ${ctx.ch('rules') || 'the rules'}\n**2.** Click **Verify** below\n\nBy clicking you confirm that you accept the server rules.`))
+      `Witaj na serwerze **${ctx.guildName}**! 👋\n\nAby uzyskać dostęp do wszystkich kanałów:\n${steps.map((st, i) => `**${i + 1}.** ${st}`).join('\n')}\n\nKlikając przycisk, potwierdzasz, że akceptujesz regulamin serwera.`,
+      `Welcome to **${ctx.guildName}**! 👋\n\nTo access all channels:\n${steps.map((st, i) => `**${i + 1}.** ${st}`).join('\n')}\n\nBy clicking you confirm that you accept the server rules.`))
     .setFooter({ text: T(ctx, 'Masz problem z weryfikacją? Napisz do administracji.', 'Trouble verifying? Contact the staff.') });
+  if (v.minAgeDays) {
+    embed.addFields({
+      name: T(ctx, '🛡️ Wymagania', '🛡️ Requirements'),
+      value: T(ctx, `Twoje konto Discord musi mieć co najmniej **${v.minAgeDays} ${v.minAgeDays === 1 ? 'dzień' : 'dni'}**.`, `Your Discord account must be at least **${v.minAgeDays} day${v.minAgeDays === 1 ? '' : 's'}** old.`),
+    });
+  }
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
-      .setCustomId(`vf:${ctx.lang}:${roleId}`)
+      .setCustomId(verifyButtonId(ctx.lang, roleId, {
+        captcha: Boolean(v.captcha),
+        minAgeDays: v.minAgeDays || 0,
+        logChannelId: v.logChannel ? ctx.channelId(v.logChannel) : null,
+      }))
       .setLabel(T(ctx, 'Zweryfikuj się', 'Verify'))
       .setEmoji('✅')
       .setStyle(ButtonStyle.Success),
@@ -486,7 +617,7 @@ function card(ctx, key) {
 }
 
 const RENDERERS = {
-  rules, info, faq, verify, rolesInfo, welcomeChat, staffGuide, boosts, partnerships, suggestions, qotd, counting,
+  rules, info, faq, verify, rolesInfo, welcomeChat, staffGuide, boosts, partnerships, suggestions, qotd, counting, announcement,
 };
 
 /** Zwraca listę wiadomości do wysłania dla danego rodzaju treści. */
@@ -511,4 +642,4 @@ const CONTENT_OPTIONS = {
   extras: { emoji: '🗂️', label: 'Pozostałe wiadomości', description: 'Boosty, partnerstwa, propozycje, karty info…' },
 };
 
-module.exports = { renderContent, CONTENT_OPTIONS };
+module.exports = { renderContent, CONTENT_OPTIONS, RULE_SECTIONS, PUNISHMENT_STYLES };

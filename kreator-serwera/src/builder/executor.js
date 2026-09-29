@@ -62,6 +62,7 @@ const SINGLE_INSTANCE_TRIGGERS = new Set([
   AutoModerationRuleTriggerType.Spam,
   AutoModerationRuleTriggerType.KeywordPreset,
   AutoModerationRuleTriggerType.MentionSpam,
+  AutoModerationRuleTriggerType.MemberProfile,
 ]);
 
 /**
@@ -83,6 +84,7 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
     channels: {},
     created: { roles: 0, categories: 0, channels: 0, messages: 0, automod: 0, overwrites: 0 },
     deleted: { channels: 0, roles: 0, automod: 0 },
+    ids: { roles: [], categories: [], channels: [], automod: [] },
     warnings: [...bp.warnings],
     errors: [],
     phases: [],
@@ -126,6 +128,20 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
     await guild.roles.fetch();
     const me = await guild.members.fetchMe();
     let communityOn = guild.features.includes('COMMUNITY');
+    // Zdjęcie ustawień sprzed budowy – potrzebne do „Cofnij budowę”.
+    R.previous = {
+      name: guild.name,
+      verificationLevel: guild.verificationLevel,
+      explicitContentFilter: guild.explicitContentFilter,
+      defaultMessageNotifications: guild.defaultMessageNotifications,
+      systemChannelId: guild.systemChannelId ?? null,
+      afkChannelId: guild.afkChannelId ?? null,
+      afkTimeout: guild.afkTimeout ?? 300,
+      rulesChannelId: guild.rulesChannelId ?? null,
+      publicUpdatesChannelId: guild.publicUpdatesChannelId ?? null,
+      everyonePermissions: String(guild.roles.everyone?.permissions?.bitfield ?? 0n),
+      community: communityOn,
+    };
     const wantCommunity = Boolean(bp.guild.community);
 
     const keep = new Set(keepChannelIds.filter(Boolean));
@@ -195,6 +211,7 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
       });
       if (created) {
         R.roles[role.key] = created.id;
+        R.ids.roles.push(created.id);
         R.created.roles += 1;
       }
       tick(`Rola ${role.name}`);
@@ -279,12 +296,14 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
       tick(`Kategoria ${cat.name}`);
       if (!category) continue;
       categoryIds[cat.key] = category.id;
+      R.ids.categories.push(category.id);
       R.created.categories += 1;
       R.created.overwrites += resolveOverwrites(cat.overwrites).length;
       for (const ch of cat.channels) {
         const channel = await createChannel(ch, category.id);
         if (channel) {
           R.channels[ch.key] = channel.id;
+          R.ids.channels.push(channel.id);
           R.created.channels += 1;
           R.created.overwrites += resolveOverwrites(ch.overwrites).length;
         }
@@ -366,6 +385,7 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
         const channel = await attempt(`Kanał ${ch.name}`, () => guild.channels.create(channelOptions(ch, parentId, KIND_TYPE[kind])));
         if (channel) {
           R.channels[ch.key] = channel.id;
+          R.ids.channels.push(channel.id);
           R.created.channels += 1;
           R.created.overwrites += resolveOverwrites(ch.overwrites).length;
         }
@@ -404,13 +424,15 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
       ch: (key) => (R.channels[key] ? `<#${R.channels[key]}>` : null),
       role: (key) => (R.roles[key] ? `<@&${R.roles[key]}>` : null),
       roleId: (key) => R.roles[key] || null,
+      channelId: (key) => R.channels[key] || null,
     };
     for (const message of bp.messages) {
       const channel = guild.channels.cache.get(R.channels[message.channel]);
       if (channel) {
         const payloads = renderContent(message.kind, ctx);
         for (const payload of payloads) {
-          const body = { embeds: payload.embeds, components: payload.components || [], allowedMentions: { parse: [] } };
+          const body = { embeds: payload.embeds, components: payload.components || [], allowedMentions: payload.allowedMentions || { parse: [] } };
+          if (payload.content) body.content = payload.content;
           const sent = await attempt(`Wiadomość w #${channel.name}`, async () => {
             if (channel.type === ChannelType.GuildForum) {
               const title = payload.thread || payload.embeds?.[0]?.data?.title || 'Informacje';
@@ -451,13 +473,14 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
         if (a.type === 'block') return { type: AutoModerationActionType.BlockMessage, metadata: { customMessage: a.message } };
         if (a.type === 'alert') return R.channels[a.channel] ? { type: AutoModerationActionType.SendAlertMessage, metadata: { channel: R.channels[a.channel] } } : null;
         if (a.type === 'timeout') return { type: AutoModerationActionType.Timeout, metadata: { durationSeconds: a.seconds } };
+        if (a.type === 'blockInteraction') return { type: AutoModerationActionType.BlockMemberInteraction };
         return null;
       }).filter(Boolean);
       const metadata = { ...rule.metadata };
       if (metadata.presets) metadata.presets = metadata.presets.map((p) => AutoModerationRuleKeywordPresetType[p]);
       const created = await attempt(`AutoMod „${rule.name}”`, () => guild.autoModerationRules.create({
         name: rule.name,
-        eventType: AutoModerationRuleEventType.MessageSend,
+        eventType: AutoModerationRuleEventType[rule.event || 'MessageSend'],
         triggerType,
         triggerMetadata: metadata,
         actions,
@@ -465,7 +488,10 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
         exemptRoles: rule.exemptRoles.map((k) => R.roles[k]).filter(Boolean),
         reason,
       }), { warn: true });
-      if (created) R.created.automod += 1;
+      if (created) {
+        R.created.automod += 1;
+        R.ids.automod.push(created.id);
+      }
       tick(rule.name);
     }
 

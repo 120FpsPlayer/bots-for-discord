@@ -3,7 +3,7 @@
 Bot, który **jedną komendą `/stworz`** buduje cały serwer Discord dokładnie tak, jak go opiszesz:
 **role z uprawnieniami, kategorie, kanały z ustawionym dostępem (kto widzi, kto pisze), regulamin, informacje, weryfikację, AutoMod i ustawienia bezpieczeństwa**.
 
-Po wpisaniu `/stworz` otwiera się interaktywny panel (widoczny tylko dla Ciebie), który zadaje **15 szczegółowych pytań**:
+Po wpisaniu `/stworz` otwiera się interaktywny panel (widoczny tylko dla Ciebie), który zadaje **16 szczegółowych pytań** (albo tylko 4 w trybie ⚡ szybkim):
 wybierasz opcje z menu, wpisujesz własne nazwy i listy, oglądasz podgląd, a na końcu klikasz **Zbuduj serwer** –
 bot tworzy wszystko sam i pokazuje postęp na żywo.
 
@@ -13,22 +13,27 @@ bot tworzy wszystko sam i pokazuje postęp na żywo.
 
 | | |
 |---|---|
-| 🧭 **17 gotowych typów serwerów** | Społeczność graczy, serwer Minecraft, RP (FiveM/GTA), e-sport/klan, programowanie, szkoła/klasa, firma, twórca/streamer, muzyka, anime, roleplay fantasy, sklep, znajomi, sztuka, wsparcie produktu, ogólna społeczność, własny projekt |
+| 🧭 **21 gotowych typów serwerów** | Społeczność graczy, serwer Minecraft, RP (FiveM/GTA), e-sport/klan, programowanie, szkoła/klasa, firma, twórca/streamer, muzyka, anime, roleplay fantasy, sklep, znajomi, sztuka, wsparcie produktu, ogólna społeczność, sport i fitness, filmy i seriale, inwestycje/krypto, wydarzenie/konferencja/hackathon, własny projekt |
 | 📝 **Twój opis** | Nazwa, opis i cel serwera, grupa docelowa, ikona – trafiają do kanału informacji i ekranu powitalnego |
 | 🌍 **Język, rozmiar, wiek** | Serwer po polsku lub angielsku; rozmiar (mały → ogromny) i wiek (13+/16+/18+) dopasowują moderację, kanały i role |
 | 🎨 **6 stylów kanałów, 6 stylów kategorii, 7 palet** | `💬・ogólny`, `💬┃ogólny`, `『💬』ogólny`, drzewko `╭ ├ ╰`, `ᴋᴀᴘɪᴛᴀʟɪᴋɪ` … + podgląd na żywo |
 | 🧩 **31 sekcji do wyboru** | weryfikacja, regulamin, ogłoszenia, wydarzenia, konkursy, partnerstwa, propozycje (forum z tagami), pytanie dnia, liczenie, muzyka, 18+, scena, AFK, strefa VIP, opis ról, administracja, logi, archiwum… |
 | ⭐ **Pytania pod typ serwera** | np. lista gier / trybów / frakcji / składów / przedmiotów / działów – każdy element dostaje kanały (tekst, dodatkowy, głosowy), rolę i opcjonalnie prywatny dostęp; kanały specjalne (IP serwera, whitelist, apelacje, cennik, harmonogram…) |
-| 🛡️ **Hierarchia ekipy** | Właściciel, Współwłaściciel, Administrator, Moderator, Pomocnik, Moderator próbny, Event/Partnership Manager, Developer, Grafik + role typowe dla danego typu (np. Mistrz Gry, Nauczyciel, Sprzedawca) + własne role z wybranym poziomem uprawnień |
+| 🛡️ **Hierarchia ekipy** | Właściciel, Współwłaściciel, Administrator, Moderator, Pomocnik, Moderator próbny, Event/Partnership Manager, Developer, Grafik + role typowe dla danego typu (np. Mistrz Gry, Nauczyciel, Sprzedawca) + własne role z wybranym poziomem uprawnień; nazwy głównych ról możesz zmienić (np. „Właściciel” → „CEO”) |
 | 🎭 **Role społeczności** | rola członka, Boty, VIP, Partner, Aktywny, Weteran, poziomy 1–100, powiadomienia, 14 kolorów, wiek, zaimki, platformy, województwa + własne role |
 | 🔐 **Uprawnienia** | 15 przełączników uprawnień członków; każda rola ekipy ma dobrany zestaw; kanały dostają precyzyjne nadpisania (tylko do odczytu, prywatne, ekipa, zarząd, logi, VIP, AFK…) |
-| 🤖 **AutoMod** | blokada spamu, limit wzmianek + ochrona przed raidem, oszustwa „free nitro”, zaproszenia Discord, wulgaryzmy (lista Discorda i **polska lista**), obelgi, treści seksualne – z alertami na kanał logów |
+| 🤖 **AutoMod** | blokada spamu, limit wzmianek + ochrona przed raidem, oszustwa „free nitro”, zaproszenia Discord, wulgaryzmy (lista Discorda i **polska lista**), obelgi, treści seksualne, **filtr nicków i profili** – z alertami na kanał logów |
 | 📨 **Gotowe treści** | profesjonalny regulamin (z paragrafami pod typ serwera), informacje, opis ról, FAQ, przewodnik dla ekipy, karty info (IP serwera, jak kupić, linki…) – wszystko jako tekst w embedach |
+| 📜 **Twój regulamin i teksty** | wybierasz paragrafy regulaminu i system kar (stopniowanie / punkty ostrzeżeń / zero tolerancji), dopisujesz własne zasady i pytania FAQ oraz piszesz pierwsze ogłoszenie (z pingiem @everyone lub roli) |
 | 🔑 **Dostęp do kanałów** | każdy kanał dostaje uprawnienia: kto go widzi i kto może pisać/mówić. Zalecane ustawienia są od razu, a w osobnym kroku zmienisz je dla każdej sekcji (np. „społeczność tylko do odczytu”, „kanały głosowe tylko dla ekipy”) |
-| ✅ **Weryfikacja** | przycisk „Zweryfikuj się” – nowe osoby widzą tylko regulamin, po kliknięciu dostają rolę członka |
+| ✅ **Weryfikacja** | przycisk „Zweryfikuj się” – nowe osoby widzą tylko regulamin, po kliknięciu dostają rolę członka. Opcjonalnie: **pytanie kontrolne** przeciw botom, **minimalny wiek konta** (1/7/30 dni) i **log** każdej próby |
 | 🌟 **Tryb Społeczności** | włączany automatycznie: kanały ogłoszeń, scena, ekran powitalny, kanał regulaminu i aktualizacji |
 | 🧨 **Tryb czyszczenia** | opcjonalnie usuwa stare kanały, role i AutoMod (tylko właściciel, wymaga wpisania nazwy serwera) |
-| 👁️ **Podsumowanie i podgląd** | pełna lista kanałów i ról przed budową, eksport projektu do JSON, szacowany czas |
+| ↩️ **Cofnij budowę** | nie podoba Ci się wynik? Jeden przycisk usuwa wszystko, co utworzył kreator, i przywraca ustawienia serwera (przez 2 godziny po budowie) |
+| 💾 **Zapisz i wczytaj projekt** | zapisz projekt do pliku i wczytaj go później – także na innym serwerze: `/stworz projekt:<plik>` |
+| ⚡ **Szybki kreator** | tylko 4 pytania (typ, nazwa, język/rozmiar, sekcje) – resztę bot dobiera sam |
+| 📁 **Własne kanały** | w nowej kategorii albo dorzucone do istniejącej sekcji (np. dodatkowe kanały w „Społeczności”) |
+| 👁️ **Podsumowanie i podgląd** | pełna lista kanałów i ról przed budową, szacowany czas |
 | 📊 **Budowa na żywo** | pasek postępu, etapy, możliwość przerwania, raport na kanale ekipy |
 
 ---
@@ -100,16 +105,17 @@ Wpisz **`/stworz`** na serwerze (komenda jest widoczna tylko dla administratoró
 | 4. 🎨 Wygląd | styl kanałów, styl kategorii, paleta kolorów ról, separatory, emoji w rolach |
 | 5. 🧩 Sekcje | trzy menu z 31 sekcjami serwera |
 | 6. ⭐ Kanały specjalne | lista elementów (gry/przedmioty/działy…), układ, co utworzyć dla każdego elementu, kanały specjalne, dodatkowe informacje (IP, linki, płatności…) |
-| 7. 🛡️ Administracja | role ekipy + własne role z poziomem uprawnień |
+| 7. 🛡️ Administracja | role ekipy + własne role z poziomem uprawnień, zmiana nazw głównych ról |
 | 8. 🎭 Role społeczności | grupy ról + własne role specjalne i dla członków |
 | 9. 🔐 Uprawnienia | co mogą członkowie (pliki, linki, wątki, kamera…), domyślne powiadomienia |
 | 10. 🔑 Dostęp do kanałów | dla każdej sekcji: kto widzi (wszyscy / także przed weryfikacją / VIP / ekipa / zarząd) i kto pisze lub mówi (wszyscy / tylko odczyt / tylko wątki) |
-| 11. 🛡️ Bezpieczeństwo | poziom weryfikacji, filtr multimediów, reguły AutoMod |
+| 11. 🛡️ Bezpieczeństwo | poziom weryfikacji, filtr multimediów, reguły AutoMod, zabezpieczenia przycisku weryfikacji |
 | 12. 🔊 Kanały | slowmode, liczba lobby głosowych, kanały z limitem, czas AFK |
-| 13. 📁 Własne kategorie | dowolne kategorie z kanałami i poziomem dostępu |
+| 13. 📁 Własne kanały | nowe kategorie albo kanały w istniejących sekcjach, z wybranym dostępem |
 | 14. 📨 Wiadomości | co bot ma opublikować, tryb Społeczności, kolor wiadomości |
-| 15. ⚙️ Tryb budowy | dodaj do obecnej struktury / wyczyść i zbuduj od nowa, nadanie ról |
-| 📋 Podsumowanie | statystyki, uwagi, podgląd kanałów i ról, eksport JSON, **Zbuduj serwer** |
+| 15. 📜 Regulamin i treści | paragrafy regulaminu, system kar, własne zasady, własne FAQ, pierwsze ogłoszenie |
+| 16. ⚙️ Tryb budowy | dodaj do obecnej struktury / wyczyść i zbuduj od nowa, nadanie ról |
+| 📋 Podsumowanie | statystyki, uwagi, podgląd kanałów i ról, **Zapisz projekt**, **Zbuduj serwer** |
 
 Na każdym etapie możesz przejść od razu do **Podsumowania** – pozostałe odpowiedzi zostaną uzupełnione zalecanymi ustawieniami.
 Z podsumowania wrócisz do dowolnego kroku przez menu „Zmień odpowiedź w kroku…”.
@@ -169,7 +175,9 @@ kreator-serwera/
 │   ├── commands/stworz.js      # definicja jedynej komendy
 │   ├── wizard/                 # panel kreatora
 │   │   ├── router.js           # ekrany i nawigacja
-│   │   ├── steps.js            # 15 kroków z pytaniami
+│   │   ├── steps.js            # 16 kroków z pytaniami
+│   │   ├── project.js          # zapis i wczytywanie projektu (JSON)
+│   │   ├── undo.js             # cofanie budowy
 │   │   ├── defaults.js         # zalecane odpowiedzi zależne od typu i rozmiaru
 │   │   ├── preview.js          # podsumowanie i podgląd kanałów/ról
 │   │   ├── build.js            # budowa z paskiem postępu

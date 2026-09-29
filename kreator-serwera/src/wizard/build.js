@@ -2,6 +2,7 @@
 
 const { MessageFlags } = require('discord.js');
 const { executeBlueprint } = require('../builder/executor');
+const undo = require('./undo');
 const {
   COLORS, embed, field, button, linkButton, row, progressBar, clip, formatDuration, ButtonStyle, cid,
 } = require('./ui');
@@ -76,6 +77,8 @@ async function runBuild({ session, blueprint, interaction }) {
     shouldAbort: () => session.abort,
   });
   log.info(`Koniec budowy na ${guild.name}: ${JSON.stringify(result.created)} w ${Math.round(result.duration / 1000)} s, błędy: ${result.errors.length}, uwagi: ${result.warnings.length}.`);
+  const createdAnything = result.ids && Object.values(result.ids).some((list) => list.length);
+  if (createdAnything) undo.remember(guild.id, result, { userId: interaction.user.id, wipe: blueprint.meta.mode === 'wipe' });
 
   await editing;
   const frame = doneFrame({ session, blueprint, result, guild, originChannelId: interaction.channelId });
@@ -127,6 +130,7 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
     '2. Nadaj role ekipie i sprawdź regulamin – dopasuj go do siebie.',
     '3. Dodaj boty (moderacja/logi, poziomy, muzyka) i nadaj im rolę **Boty**.',
     '4. Zostaw tego bota online – obsługuje przycisk weryfikacji.',
+    '↩️ Nie podoba Ci się wynik? **Cofnij budowę** usunie wszystko, co utworzyłem (przez 2 godziny).',
   ].join('\n')));
 
   const link = (key) => (result.channels[key] ? `https://discord.com/channels/${guild.id}/${result.channels[key]}` : null);
@@ -135,6 +139,8 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
   if (general) buttons.push(linkButton(general, 'Przejdź na serwer', '💬'));
   if (link('rules') && general !== link('rules')) buttons.push(linkButton(link('rules'), 'Regulamin', '📜'));
   if (link('staffChat')) buttons.push(linkButton(link('staffChat'), 'Czat ekipy', '🛡️'));
+  const undoBtn = undo.undoButton(guild.id);
+  if (undoBtn) buttons.push(undoBtn);
   if (blueprint.meta.mode === 'wipe' && !result.fatal) {
     buttons.push(button(`wzx:delorigin:${originChannelId}`, 'Usuń ten kanał', { style: ButtonStyle.Danger, emoji: '🗑️' }));
   }

@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { ChannelType, PermissionsBitField, PermissionFlagsBits } = require('discord.js');
 const { FakeGuild, FakeMember } = require('./helpers/fakeDiscord');
-const { handleVerification } = require('../src/features/verification');
+const { handleVerification, handleVerificationAnswer, verifyButtonId, parseOptions } = require('../src/features/verification');
 const { renderContent } = require('../src/builder/content');
 const { createAnswers } = require('../src/wizard/defaults');
 const { buildBlueprint } = require('../src/builder/blueprint');
@@ -72,6 +72,7 @@ test('treści (regulamin, info, FAQ, opis ról, karty) mieszczą się w limitach
         ch: (key) => `<#${key}>`,
         role: (key) => `<@&${(ids[key] ||= String(n += 1))}>`,
         roleId: (key) => (ids[key] ||= String(n += 1)),
+        channelId: (key) => `9${String(key.length).padStart(17, '0')}`,
       };
       const kinds = [...new Set(bp.messages.map((m) => m.kind))];
       for (const kind of kinds) {
@@ -81,4 +82,68 @@ test('treści (regulamin, info, FAQ, opis ról, karty) mieszczą się w limitach
       }
     }
   }
+});
+
+function verifyInteraction(guild, member, customId, extra = {}) {
+  const state = { replies: [], modals: [] };
+  return {
+    state,
+    guild,
+    member,
+    user: { id: member.id, tag: `u#${member.id}`, username: 'u', createdTimestamp: extra.createdTimestamp ?? Date.now() - 400 * 86_400_000, displayAvatarURL: () => null, toString: () => `<@${member.id}>` },
+    customId,
+    fields: { getTextInputValue: () => extra.answer ?? '' },
+    reply: async (p) => { state.replies.push(p); },
+    showModal: async (m) => { state.modals.push(m.toJSON()); },
+  };
+}
+
+test('weryfikacja: identyfikator przycisku mieści opcje i mieści się w limicie 100 znaków', () => {
+  const id = verifyButtonId('pl', '123456789012345678', { captcha: true, minAgeDays: 30, logChannelId: '987654321098765432' });
+  assert.ok(id.length <= 100);
+  assert.deepEqual(parseOptions(id.split(':')[3]), { captcha: true, minAgeDays: 30, logChannelId: '987654321098765432' });
+  assert.equal(verifyButtonId('en', '123456789012345678'), 'vf:en:123456789012345678', 'bez opcji – stary, zgodny format');
+});
+
+test('weryfikacja: pytanie kontrolne – zła odpowiedź odmawia, dobra nadaje rolę i zapisuje log', async () => {
+  const guild = new FakeGuild();
+  const role = await guild.roles.create({ name: 'Członek', permissions: PermissionFlagsBits.ViewChannel });
+  const logs = await guild.channels.create({ name: 'logi', type: ChannelType.GuildText });
+  logs.isTextBased = () => true;
+  const member = new FakeMember(guild, '400000000000000001');
+  const buttonId = verifyButtonId('pl', role.id, { captcha: true, logChannelId: logs.id });
+
+  const click = verifyInteraction(guild, member, buttonId);
+  await handleVerification(click);
+  assert.equal(click.state.modals.length, 1, 'pokazano pytanie kontrolne');
+  const modal = click.state.modals[0];
+  const [, a, b] = modal.components[0].label.match(/(\d+) \+ (\d+)/);
+  assert.ok(!member.roles.cache.has(role.id), 'samo kliknięcie nie nadaje roli');
+
+  const wrong = verifyInteraction(guild, member, modal.custom_id, { answer: String(Number(a) + Number(b) + 1) });
+  await handleVerificationAnswer(wrong);
+  assert.ok(!member.roles.cache.has(role.id));
+  assert.match(wrong.state.replies[0].embeds[0].data.description, /Zła odpowiedź/);
+
+  const forged = verifyInteraction(guild, member, modal.custom_id.replace(/:\d+:\d+:/, ':1:1:'), { answer: '2' });
+  await handleVerificationAnswer(forged);
+  assert.ok(!member.roles.cache.has(role.id), 'podmienione pytanie jest odrzucane');
+
+  const right = verifyInteraction(guild, member, modal.custom_id, { answer: ` ${Number(a) + Number(b)} ` });
+  await handleVerificationAnswer(right);
+  assert.ok(member.roles.cache.has(role.id), 'dobra odpowiedź nadaje rolę');
+  assert.equal(logs.messages.length, 2, 'log: nieudana i udana próba');
+});
+
+test('weryfikacja: za młode konto jest odrzucane z informacją, kiedy spróbować ponownie', async () => {
+  const guild = new FakeGuild();
+  const role = await guild.roles.create({ name: 'Członek' });
+  const member = new FakeMember(guild, '400000000000000002');
+  const young = verifyInteraction(guild, member, verifyButtonId('pl', role.id, { minAgeDays: 7 }), { createdTimestamp: Date.now() - 2 * 86_400_000 });
+  await handleVerification(young);
+  assert.ok(!member.roles.cache.has(role.id));
+  assert.match(young.state.replies[0].embeds[0].data.description, /za młode/);
+  const old = verifyInteraction(guild, member, verifyButtonId('pl', role.id, { minAgeDays: 7 }));
+  await handleVerification(old);
+  assert.ok(member.roles.cache.has(role.id));
 });

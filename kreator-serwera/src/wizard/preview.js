@@ -101,7 +101,7 @@ function summaryFields(session, bp) {
     field('🛡️ Bezpieczeństwo', [
       `Weryfikacja Discorda: ${lvl?.emoji} ${lvl?.label}`,
       `Filtr multimediów: ${flt?.emoji} ${flt?.label}`,
-      `Weryfikacja przyciskiem: ${bp.meta.gate ? '✅' : '❌'}`,
+      `Weryfikacja przyciskiem: ${bp.meta.gate ? `✅${bp.meta.verify?.captcha ? ' + pytanie' : ''}${bp.meta.verify?.minAgeDays ? ` + konto ${bp.meta.verify.minAgeDays} d.` : ''}${bp.meta.verify?.logChannel ? ' + logi' : ''}` : '❌'}`,
       `Społeczność: ${COMMUNITY_OPTIONS[a.content.community].emoji} ${COMMUNITY_OPTIONS[a.content.community].label}`,
     ].join('\n'), true),
     field('⚙️ Budowa', [
@@ -110,6 +110,14 @@ function summaryFields(session, bp) {
       `👑 Nadanie ról: ${a.mode.assign ? 'tak' : 'nie'}`,
     ].join('\n'), true),
   ];
+  const t = a.texts || {};
+  const punish = { ladder: 'stopniowanie kar', points: 'punkty ostrzeżeń', strict: 'zero tolerancji' }[t.punishments] || 'stopniowanie kar';
+  fields.push(field('📜 Regulamin i teksty', [
+    `📜 ${(t.ruleSections || []).length} paragrafów • ⚖️ ${punish}`,
+    `✍️ własne zasady: **${(t.customRules || []).length}** • ❓ własne FAQ: **${(t.customFaq || []).length}**`,
+    `📢 pierwsze ogłoszenie: ${t.announcement ? '**tak**' : 'nie'}`,
+    Object.keys(a.roleNames || {}).length ? `✏️ zmienione nazwy ról: ${Object.values(a.roleNames).join(', ')}` : null,
+  ].filter(Boolean).join('\n'), true));
   const custom = Object.keys(a.channelAccess || {}).length;
   fields.push(field('🔑 Uprawnienia kanałów', [
     `💬 **${st.open}** otwartych – członkowie widzą i piszą`,

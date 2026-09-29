@@ -56,10 +56,10 @@ const SIZE_MEMBER_PERMS = {
 };
 
 const SIZE_SECURITY = {
-  small: { verificationLevel: 1, contentFilter: 2, automod: ['spam', 'mentions', 'scam'] },
-  medium: { verificationLevel: 2, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs'] },
-  large: { verificationLevel: 2, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs', 'presetSexual', 'presetProfanity'] },
-  huge: { verificationLevel: 3, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs', 'presetSexual', 'presetProfanity', 'polishProfanity'] },
+  small: { verificationLevel: 1, contentFilter: 2, automod: ['spam', 'mentions', 'scam'], verifyOptions: ['log'] },
+  medium: { verificationLevel: 2, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs'], verifyOptions: ['log'] },
+  large: { verificationLevel: 2, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs', 'presetSexual', 'presetProfanity', 'profiles'], verifyOptions: ['log', 'captcha', 'age1'] },
+  huge: { verificationLevel: 3, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs', 'presetSexual', 'presetProfanity', 'polishProfanity', 'profiles'], verifyOptions: ['log', 'captcha', 'age7'] },
 };
 
 const SIZE_CHANNELS = {
@@ -126,6 +126,7 @@ function computeDependentDefaults(answers) {
     'security.verificationLevel': computeSecurity(preset, size, age).verificationLevel,
     'security.contentFilter': computeSecurity(preset, size, age).contentFilter,
     'security.automod': computeSecurity(preset, size, age).automod,
+    'security.verifyOptions': computeSecurity(preset, size, age).verifyOptions,
     'channels.slowmode': SIZE_CHANNELS[size].slowmode,
     'channels.voiceCount': SIZE_CHANNELS[size].voiceCount,
     'channels.voiceLayout': SIZE_CHANNELS[size].voiceLayout,
@@ -188,6 +189,7 @@ function createAnswers(type = 'community') {
     special: { items: [], options: [], layout: 'shared', extras: [], info: {} },
     staffRoles: [],
     customStaff: [],
+    roleNames: {},
     communityRoles: [],
     customRoles: [],
     permissions: { member: [], notifications: 'mentions' },
@@ -196,6 +198,14 @@ function createAnswers(type = 'community') {
     channelAccess: {},
     customCategories: [],
     content: { panels: [...ALL_PANELS], community: 'full', embedColor: 'palette' },
+    texts: {
+      ruleSections: ['general', 'behaviour', 'content', 'voice', 'profile', 'type', 'punishments'],
+      punishments: 'ladder',
+      customRules: [],
+      customFaq: [],
+      faqDefaults: true,
+      announcement: null,
+    },
     mode: { type: 'append', assign: true },
     touched: {},
   };

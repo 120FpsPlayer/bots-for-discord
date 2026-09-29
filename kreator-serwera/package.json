@@ -1,6 +1,6 @@
 {
   "name": "kreator-serwera",
-  "version": "1.0.0",
+  "version": "1.3.0",
   "description": "Bot Discord, który jedną komendą /stworz buduje cały serwer: role, uprawnienia, kategorie, kanały, regulamin, panele i AutoMod.",
   "main": "index.js",
   "private": true,

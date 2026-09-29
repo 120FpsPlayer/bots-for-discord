@@ -10,7 +10,7 @@ const {
 const { MEMBER_TOGGLES, VIEW_OPTIONS, WRITE_OPTIONS, describeAccess } = require('../builder/permissions');
 const { buildBlueprint } = require('../builder/blueprint');
 const { CATEGORIES } = require('../data/modules');
-const { CONTENT_OPTIONS } = require('../builder/content');
+const { CONTENT_OPTIONS, RULE_SECTIONS, PUNISHMENT_STYLES } = require('../builder/content');
 const N = require('../builder/naming');
 const { tr } = require('../utils/i18n');
 const { SIZES, AGES, LANGUAGES, applyDefaults, markTouched } = require('./defaults');
@@ -425,6 +425,8 @@ const specialStep = {
 // ───────────────────────────── 7. EKIPA ─────────────────────────────
 
 const LEVEL_OPTIONS = ['admin', 'mod', 'helper', 'trial', 'none'];
+/** Role, których nazwy można zmienić (np. „Właściciel” → „CEO”). */
+const RENAMABLE = ['owner', 'admin', 'mod', 'helper', 'member'];
 
 function staffEntries(s) {
   const p = preset(s);
@@ -444,7 +446,7 @@ const staffStep = {
     const entries = staffEntries(s);
     const selected = entries
       .filter(([k]) => a.staffRoles.includes(k))
-      .map(([k, d]) => ({ name: tr(d.name, 'pl'), emoji: d.emoji, level: d.level, rank: STAFF_LEVELS[d.level].rank + (d.rankOffset || 0) }))
+      .map(([k, d]) => ({ name: a.roleNames?.[k] || tr(d.name, 'pl'), emoji: d.emoji, level: d.level, rank: STAFF_LEVELS[d.level].rank + (d.rankOffset || 0) }))
       .concat(a.customStaff.map((c) => ({ name: c.name, emoji: '🔰', level: c.level, rank: STAFF_LEVELS[c.level].rank + 0.7 })))
       .sort((x, y) => x.rank - y.rank);
     return {
@@ -461,6 +463,7 @@ const staffStep = {
         }),
         row(
           button(cid(s, 'b', 'custom'), 'Dodaj własne role ekipy', { style: ButtonStyle.Primary, emoji: '➕' }),
+          button(cid(s, 'b', 'rename'), 'Zmień nazwy ról', { emoji: '✏️' }),
           button(cid(s, 'b', 'clear'), 'Usuń własne', { emoji: '🧹', disabled: !a.customStaff.length }),
         ),
       ],
@@ -482,8 +485,26 @@ const staffStep = {
       };
     },
     clear(s) { s.answers.customStaff = []; },
+    rename(s) {
+      const a = s.answers;
+      const names = a.roleNames || {};
+      const lang = a.language;
+      const fields = RENAMABLE.map((key) => {
+        const base = key === 'member' ? tr(preset(s).memberName, lang) : tr(STAFF_ROLES[key].name, lang);
+        return { id: key, label: key === 'member' ? 'Rola członka' : tr(STAFF_ROLES[key].name, 'pl'), style: 'short', max: 60, value: names[key] || '', placeholder: base };
+      });
+      return { modal: modal(cid(s, 'm', 'rename'), 'Nazwy ról (puste = domyślne)', fields) };
+    },
   },
   modal: {
+    rename(s, i) {
+      const names = {};
+      for (const key of RENAMABLE) {
+        const value = N.cleanName(modalText(i, key), 60);
+        if (value) names[key] = value;
+      }
+      s.answers.roleNames = names;
+    },
     custom(s, i) {
       const fallback = modalSelect(i, 'level')[0] || 'none';
       const hasLevelWord = (line) => line.split(/[|,;]/).some((part) => /^(admin|administrator|administracja|mod|moderator|moderacja|pomoc|pomocnik|helper|support|wsparcie|trial|próbny|probny|brak|none|zwykła|zwykla|bez)$/i.test(part.trim()));
@@ -727,21 +748,32 @@ function setAccess(s, field_, value) {
 
 // ───────────────────────────── 11. BEZPIECZEŃSTWO ─────────────────────────────
 
+const VERIFY_OPTIONS = {
+  captcha: { emoji: '🧮', label: 'Pytanie kontrolne (anty-bot)', description: 'Po kliknięciu trzeba rozwiązać proste działanie, np. 4 + 7' },
+  age1: { emoji: '📅', label: 'Konto min. 1 dzień', description: 'Blokuje świeżo założone konta (raidy)' },
+  age7: { emoji: '🗓️', label: 'Konto min. 7 dni', description: 'Mocniejsza ochrona przed multikontami' },
+  age30: { emoji: '🛡️', label: 'Konto min. 30 dni', description: 'Najmocniejsza ochrona – dla dużych serwerów' },
+  log: { emoji: '📝', label: 'Zapisuj weryfikacje w logach', description: 'Każda (także nieudana) próba trafi na kanał logów' },
+};
+
 const securityStep = {
   id: 'security',
   emoji: '🛡️',
   title: 'Bezpieczeństwo i AutoMod',
-  intro: 'Ustaw poziom weryfikacji Discorda, filtr multimediów i reguły AutoMod, które automatycznie blokują spam, oszustwa i wulgaryzmy. Alerty trafią na kanał logów.',
+  intro: 'Ustaw poziom weryfikacji Discorda, filtr multimediów, reguły AutoMod (automatycznie blokują spam, oszustwa i wulgaryzmy – alerty trafią na kanał logów) oraz zabezpieczenia przycisku weryfikacji: pytanie kontrolne przeciw botom, minimalny wiek konta i zapis prób w logach.',
   render(s) {
     const a = s.answers;
     const lvl = VERIFICATION_LEVELS.find((v) => v.value === Number(a.security.verificationLevel));
     const flt = CONTENT_FILTERS.find((v) => v.value === Number(a.security.contentFilter));
     const am = Object.entries(AUTOMOD_OPTIONS).filter(([k]) => a.security.automod.includes(k));
+    const gate = a.modules.includes('verification');
+    const vo = Object.entries(VERIFY_OPTIONS).filter(([k]) => (a.security.verifyOptions || []).includes(k));
     return {
       fields: [
         field('🔐 Poziom weryfikacji', `${lvl.emoji} **${lvl.label}** – ${lvl.description}`, true),
         field('🖼️ Filtr multimediów', `${flt.emoji} **${flt.label}**`, true),
-        field(`🤖 AutoMod (${am.length})`, am.map(([, o]) => `${o.emoji} ${o.label}`).join('\n') || '*wyłączony*'),
+        field(`🤖 AutoMod (${am.length})`, am.map(([, o]) => `${o.emoji} ${o.label}`).join('\n') || '*wyłączony*', true),
+        field('✅ Przycisk weryfikacji', gate ? (vo.map(([, o]) => `${o.emoji} ${o.label}`).join('\n') || '*zwykły przycisk*') : '*sekcja „Weryfikacja” wyłączona*', true),
         a.content.community !== 'off' ? field('ℹ️ Tryb Społeczności', 'Wymaga poziomu weryfikacji min. „Niski” i filtra „Wszyscy członkowie” – kreator dopilnuje tego automatycznie.') : null,
       ].filter(Boolean),
       rows: [
@@ -759,6 +791,13 @@ const securityStep = {
           max: Object.keys(AUTOMOD_OPTIONS).length,
           options: opts(Object.entries(AUTOMOD_OPTIONS), a.security.automod, (o) => ({ label: o.label, description: o.description, emoji: o.emoji })),
         }),
+        selectRow(cid(s, 's', 'verify'), {
+          placeholder: gate ? '✅ Przycisk weryfikacji – zabezpieczenia…' : '✅ Zabezpieczenia weryfikacji (włącz sekcję „Weryfikacja”)',
+          min: 0,
+          max: Object.keys(VERIFY_OPTIONS).length,
+          disabled: !gate,
+          options: opts(Object.entries(VERIFY_OPTIONS), a.security.verifyOptions || [], (o) => ({ label: o.label, description: o.description, emoji: o.emoji })),
+        }),
       ],
     };
   },
@@ -766,6 +805,18 @@ const securityStep = {
     verification(s, [v]) { s.answers.security.verificationLevel = Number(v); markTouched(s.answers, 'security.verificationLevel'); },
     filter(s, [v]) { s.answers.security.contentFilter = Number(v); markTouched(s.answers, 'security.contentFilter'); },
     automod(s, values) { s.answers.security.automod = values.filter((v) => AUTOMOD_OPTIONS[v]); markTouched(s.answers, 'security.automod'); },
+    verify(s, values) {
+      let chosen = values.filter((v) => VERIFY_OPTIONS[v]);
+      // Minimalny wiek konta – zostaje tylko najdłuższy wybrany próg.
+      const ages = chosen.filter((v) => v.startsWith('age'));
+      if (ages.length > 1) {
+        const keep = ages.sort((x, y) => Number(y.slice(3)) - Number(x.slice(3)))[0];
+        chosen = chosen.filter((v) => !v.startsWith('age') || v === keep);
+        s.flash = `ℹ️ Można wybrać jeden próg wieku konta – zostawiono najwyższy (${keep.slice(3)} dni).`;
+      }
+      s.answers.security.verifyOptions = chosen;
+      markTouched(s.answers, 'security.verifyOptions');
+    },
   },
 };
 
@@ -837,26 +888,48 @@ const ACCESS = {
 };
 const MAX_CUSTOM = 10;
 
+/** Gdzie można dodać własne kanały: nowa kategoria albo istniejąca sekcja. */
+const CUSTOM_TARGETS = {
+  new: { emoji: '🆕', label: 'Nowa kategoria', description: 'Utwórz osobną kategorię o podanej nazwie' },
+  info: { emoji: '📌', label: 'Do sekcji Informacje', description: 'Kanały trafią do istniejącej kategorii' },
+  news: { emoji: '📢', label: 'Do sekcji Ogłoszenia', description: 'Kanały trafią do istniejącej kategorii' },
+  special: { emoji: '⭐', label: 'Do sekcji typu serwera', description: 'Np. „Granie”, „Serwer”, „Nauka”' },
+  community: { emoji: '💬', label: 'Do sekcji Społeczność', description: 'Kanały trafią do istniejącej kategorii' },
+  voice: { emoji: '🔊', label: 'Do sekcji Kanały głosowe', description: 'Kanały trafią do istniejącej kategorii' },
+  vip: { emoji: '💎', label: 'Do Strefy VIP', description: 'Kanały trafią do istniejącej kategorii' },
+  staff: { emoji: '🛡️', label: 'Do sekcji Administracja', description: 'Kanały trafią do istniejącej kategorii' },
+};
+
+/** Wyciąga emoji z początku nazwy („🏆 Turnieje” → emoji 🏆, nazwa „Turnieje”). */
+function splitEmoji(text) {
+  const match = String(text).match(/^\s*(\p{Extended_Pictographic}(?:\uFE0F|\u200D\p{Extended_Pictographic})*)\s*/u);
+  return match ? { emoji: match[1], name: text.slice(match[0].length) } : { emoji: null, name: text };
+}
+
 const customStep = {
   id: 'custom',
   emoji: '📁',
-  title: 'Własne kategorie',
-  intro: 'Brakuje czegoś? Dodaj własne kategorie z dowolnymi kanałami tekstowymi i głosowymi. Ten krok jest opcjonalny.',
+  title: 'Własne kanały i kategorie',
+  intro: 'Brakuje czegoś? Dodaj własne kanały tekstowe i głosowe – w nowej kategorii albo w istniejącej sekcji (np. dodatkowe kanały w „Społeczności”). Ten krok jest opcjonalny.',
   render(s) {
     const cats = s.answers.customCategories;
-    const fields = cats.map((c, i) => field(
-      `${i + 1}. ${c.emoji || '📁'} ${c.name} – ${ACCESS[c.access]?.emoji} ${ACCESS[c.access]?.label}`,
-      [
-        c.text.length ? `💬 ${c.text.map((t) => `#${N.slugify(t)}`).join(', ')}` : null,
-        c.voice.length ? `🔊 ${c.voice.join(', ')}` : null,
-      ].filter(Boolean).join('\n') || '*pusta – zostanie pominięta*',
-    ));
-    if (!cats.length) fields.push(field('📭 Brak własnych kategorii', 'Kliknij **Dodaj kategorię**, aby utworzyć np. „Turnieje” z kanałami #zapisy, #drabinka i kanałem głosowym „Sędziowie”.'));
+    const fields = cats.map((c, i) => {
+      const target = CUSTOM_TARGETS[c.target || 'new'];
+      const where = (c.target || 'new') === 'new' ? `${c.emoji || '📁'} ${c.name}` : `${target.emoji} ${target.label.replace('Do sekcji ', '→ ').replace('Do ', '→ ')}`;
+      return field(
+        `${i + 1}. ${where} – ${ACCESS[c.access]?.emoji} ${ACCESS[c.access]?.label}`,
+        [
+          c.text.length ? `💬 ${c.text.map((t) => `#${N.slugify(t)}`).join(', ')}` : null,
+          c.voice.length ? `🔊 ${c.voice.join(', ')}` : null,
+        ].filter(Boolean).join('\n') || '*pusta – zostanie pominięta*',
+      );
+    });
+    if (!cats.length) fields.push(field('📭 Brak własnych kanałów', 'Kliknij **Dodaj kanały**, aby utworzyć np. kategorię „🏆 Turnieje” z kanałami #zapisy i #drabinka albo dorzucić #pomysły do sekcji „Społeczność”.'));
     return {
       fields,
       rows: [row(
-        button(cid(s, 'b', 'add'), 'Dodaj kategorię', { style: ButtonStyle.Primary, emoji: '➕', disabled: cats.length >= MAX_CUSTOM }),
-        button(cid(s, 'b', 'undo'), 'Usuń ostatnią', { emoji: '↩️', disabled: !cats.length }),
+        button(cid(s, 'b', 'add'), 'Dodaj kanały', { style: ButtonStyle.Primary, emoji: '➕', disabled: cats.length >= MAX_CUSTOM }),
+        button(cid(s, 'b', 'undo'), 'Usuń ostatnie', { emoji: '↩️', disabled: !cats.length }),
         button(cid(s, 'b', 'clear'), 'Usuń wszystkie', { emoji: '🧹', disabled: !cats.length }),
       )],
     };
@@ -864,12 +937,15 @@ const customStep = {
   button: {
     add(s) {
       return {
-        modal: modal(cid(s, 'm', 'category'), 'Nowa kategoria', [
-          { id: 'name', label: 'Nazwa kategorii', style: 'short', required: true, max: 60, placeholder: 'np. Turnieje' },
+        modal: modal(cid(s, 'm', 'category'), 'Dodaj własne kanały', [
+          {
+            id: 'target', label: 'Gdzie dodać kanały?',
+            select: { options: Object.entries(CUSTOM_TARGETS).map(([value, d]) => ({ value, label: d.label, description: d.description, emoji: d.emoji, default: value === 'new' })) },
+          },
+          { id: 'name', label: 'Nazwa nowej kategorii', description: 'Możesz zacząć od emoji, np. „🏆 Turnieje”. Pomiń przy istniejącej sekcji.', style: 'short', max: 60, placeholder: '🏆 Turnieje' },
           { id: 'text', label: 'Kanały tekstowe', description: 'Oddziel przecinkami', style: 'paragraph', max: 800, placeholder: 'zapisy, drabinka, wyniki' },
           { id: 'voice', label: 'Kanały głosowe', description: 'Oddziel przecinkami', style: 'paragraph', max: 500, placeholder: 'Sędziowie, Mecz 1, Mecz 2' },
           { id: 'access', label: 'Kto ma dostęp?', select: { options: Object.entries(ACCESS).map(([value, d]) => ({ value, label: d.label, description: d.description, emoji: d.emoji, default: value === 'public' })) } },
-          { id: 'emoji', label: 'Emoji kategorii (opcjonalnie)', style: 'short', max: 16, placeholder: '🏆' },
         ]),
       };
     },
@@ -879,15 +955,15 @@ const customStep = {
   modal: {
     category(s, i) {
       if (s.answers.customCategories.length >= MAX_CUSTOM) return;
-      const name = N.cleanName(modalText(i, 'name'), 60);
+      const target = CUSTOM_TARGETS[modalSelect(i, 'target')[0]] ? modalSelect(i, 'target')[0] : 'new';
+      const { emoji, name: rawName } = splitEmoji(modalText(i, 'name'));
+      const name = N.cleanName(rawName, 60);
       const text = N.parseList(modalText(i, 'text'), { max: 20, maxLength: 60 });
       const voice = N.parseList(modalText(i, 'voice'), { max: 20, maxLength: 60 });
       const access = modalSelect(i, 'access')[0] || 'public';
-      const emojiRaw = modalText(i, 'emoji');
-      const emoji = /\p{Extended_Pictographic}/u.test(emojiRaw) ? Array.from(emojiRaw).slice(0, 4).join('') : '📁';
-      if (!name) { s.flash = '⚠️ Kategoria musi mieć nazwę.'; return; }
-      if (!text.length && !voice.length) s.flash = '⚠️ Dodano kategorię bez kanałów – zostanie pominięta przy budowie.';
-      s.answers.customCategories.push({ name, text, voice, access: ACCESS[access] ? access : 'public', emoji });
+      if (target === 'new' && !name) { s.flash = '⚠️ Nowa kategoria musi mieć nazwę.'; return; }
+      if (!text.length && !voice.length) { s.flash = '⚠️ Nie podano żadnych kanałów – nic nie dodano.'; return; }
+      s.answers.customCategories.push({ target, name: target === 'new' ? name : '', text, voice, access: ACCESS[access] ? access : 'public', emoji: emoji || '📁' });
     },
   },
 };
@@ -941,7 +1017,162 @@ const contentStep = {
   },
 };
 
-// ───────────────────────────── 15. TRYB BUDOWY ─────────────────────────────
+// ───────────────────────────── 15. REGULAMIN I TREŚCI ─────────────────────────────
+
+const MAX_RULES = 20;
+const MAX_FAQ = 15;
+
+/** „Pytanie | Odpowiedź” (albo „Pytanie? Odpowiedź”) – jedna para w linii. */
+function parseFaq(text) {
+  const out = [];
+  for (const raw of String(text ?? '').split(/\n+/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    let q;
+    let a;
+    if (line.includes('|')) {
+      [q, ...a] = line.split('|');
+      a = a.join('|');
+    } else if (line.includes('?')) {
+      const i = line.indexOf('?');
+      q = line.slice(0, i + 1);
+      a = line.slice(i + 1);
+    } else {
+      continue;
+    }
+    q = N.cleanName(q, 200);
+    a = String(a).trim().slice(0, 900);
+    if (q && a) out.push({ q, a });
+    if (out.length >= MAX_FAQ) break;
+  }
+  return out;
+}
+
+const textsStep = {
+  id: 'texts',
+  emoji: '📜',
+  title: 'Regulamin i treści',
+  intro: 'Dopasuj regulamin i teksty do siebie: wybierz paragrafy regulaminu i system kar, dopisz własne zasady i pytania FAQ oraz napisz pierwsze ogłoszenie, które bot opublikuje na start.',
+  render(s) {
+    const t = s.answers.texts;
+    const chosen = Object.entries(RULE_SECTIONS).filter(([k]) => t.ruleSections.includes(k));
+    const style = PUNISHMENT_STYLES[t.punishments] || PUNISHMENT_STYLES.ladder;
+    const fields = [
+      field(`📜 Paragrafy regulaminu (${chosen.length}/${Object.keys(RULE_SECTIONS).length})`, chosen.map(([, r]) => `${r.emoji} ${r.label}`).join('\n') || '*brak – regulamin będzie zawierał tylko Twoje zasady*', true),
+      field('⚖️ System kar', `${style.emoji} **${style.label}**\n${style.description}`, true),
+      field(`✍️ Twoje zasady (${t.customRules.length})`, t.customRules.length ? t.customRules.slice(0, 6).map((r, i) => `**${i + 1}.** ${clip(r, 120)}`).join('\n') + (t.customRules.length > 6 ? `\n…i ${t.customRules.length - 6} więcej` : '') : '*brak – kliknij „Własne zasady”*'),
+      field(`❓ Twoje pytania FAQ (${t.customFaq.length})`, t.customFaq.length ? t.customFaq.slice(0, 5).map((e) => `❔ ${clip(e.q, 90)}`).join('\n') + `\n*Standardowe pytania: ${t.faqDefaults === false ? 'ukryte' : 'zostają'}*` : '*brak – bot doda standardowe pytania*'),
+      field('📢 Pierwsze ogłoszenie', t.announcement?.text ? `**${clip(t.announcement.title || 'Ogłoszenie', 100)}**\n${clip(t.announcement.text, 250)}\n*Ping: ${{ none: 'bez oznaczenia', role: 'rola Ogłoszenia', everyone: '@everyone' }[t.announcement.ping] || 'bez oznaczenia'}*` : '*brak – kliknij „Pierwsze ogłoszenie”*'),
+    ];
+    if (!s.answers.modules.includes('rules')) fields.push(field('⚠️ Regulamin wyłączony', 'Sekcja „Regulamin” jest wyłączona w kroku „Sekcje serwera” – paragrafy i zasady nie zostaną opublikowane.'));
+    return {
+      fields,
+      rows: [
+        selectRow(cid(s, 's', 'sections'), {
+          placeholder: '📜 Paragrafy regulaminu…',
+          min: 0,
+          max: Object.keys(RULE_SECTIONS).length,
+          options: opts(Object.entries(RULE_SECTIONS), t.ruleSections, (r) => ({ label: r.label, description: r.description, emoji: r.emoji })),
+        }),
+        selectRow(cid(s, 's', 'punish'), {
+          placeholder: '⚖️ System kar',
+          options: opts(Object.entries(PUNISHMENT_STYLES), t.punishments, (r) => ({ label: r.label, description: r.description, emoji: r.emoji })),
+        }),
+        row(
+          button(cid(s, 'b', 'rules'), 'Własne zasady', { style: ButtonStyle.Primary, emoji: '✍️' }),
+          button(cid(s, 'b', 'faq'), 'Własne FAQ', { style: ButtonStyle.Primary, emoji: '❓' }),
+          button(cid(s, 'b', 'announce'), 'Pierwsze ogłoszenie', { style: ButtonStyle.Primary, emoji: '📢' }),
+          button(cid(s, 'b', 'clear'), 'Wyczyść własne teksty', { emoji: '🧹', disabled: !t.customRules.length && !t.customFaq.length && !t.announcement }),
+        ),
+      ],
+    };
+  },
+  select: {
+    sections(s, values) { s.answers.texts.ruleSections = values.filter((v) => RULE_SECTIONS[v]); },
+    punish(s, [v]) { if (PUNISHMENT_STYLES[v]) s.answers.texts.punishments = v; },
+  },
+  button: {
+    rules(s) {
+      return {
+        modal: modal(cid(s, 'm', 'rules'), 'Własne zasady regulaminu', [{
+          id: 'rules', label: 'Zasady (jedna w linii)', description: `Pojawią się w regulaminie jako osobny paragraf (max ${MAX_RULES}).`,
+          style: 'paragraph', max: 4000, value: s.answers.texts.customRules.join('\n'),
+          placeholder: 'Zakaz rozmów o polityce\nNa kanale #memy tylko memy\nPrzed pytaniem przeczytaj FAQ',
+        }]),
+      };
+    },
+    faq(s) {
+      const t = s.answers.texts;
+      return {
+        modal: modal(cid(s, 'm', 'faq'), 'Własne pytania FAQ', [
+          {
+            id: 'faq', label: 'Pytania i odpowiedzi', description: `Jedno w linii: Pytanie | Odpowiedź (max ${MAX_FAQ})`,
+            style: 'paragraph', max: 4000, value: t.customFaq.map((e) => `${e.q} | ${e.a}`).join('\n'),
+            placeholder: 'Kiedy są eventy? | W każdy piątek o 20:00\nJak zostać VIP? | Aktywnie pomagaj innym',
+          },
+          {
+            id: 'defaults', label: 'Standardowe pytania', description: 'Pytania dodawane przez kreator (role, kary, reklama…)',
+            select: { options: [
+              { value: 'keep', label: 'Zostaw standardowe + moje', emoji: '➕', default: t.faqDefaults !== false },
+              { value: 'only', label: 'Tylko moje pytania', emoji: '✍️', default: t.faqDefaults === false },
+            ] },
+          },
+        ]),
+      };
+    },
+    announce(s) {
+      const a = s.answers.texts.announcement || {};
+      return {
+        modal: modal(cid(s, 'm', 'announce'), 'Pierwsze ogłoszenie', [
+          { id: 'title', label: 'Tytuł', style: 'short', max: 200, value: a.title || '', placeholder: '🎉 Serwer oficjalnie otwarty!' },
+          { id: 'text', label: 'Treść ogłoszenia', style: 'paragraph', max: 3500, required: true, value: a.text || '', placeholder: 'Witajcie! Od dziś startujemy z…' },
+          {
+            id: 'ping', label: 'Kogo oznaczyć?', select: { options: [
+              { value: 'none', label: 'Nikogo', emoji: '🔕', default: !a.ping || a.ping === 'none' },
+              { value: 'role', label: 'Rolę „Ogłoszenia” (jeśli istnieje)', emoji: '🔔', default: a.ping === 'role' },
+              { value: 'everyone', label: '@everyone', emoji: '📣', default: a.ping === 'everyone' },
+            ] },
+          },
+        ]),
+      };
+    },
+    clear(s) {
+      Object.assign(s.answers.texts, { customRules: [], customFaq: [], faqDefaults: true, announcement: null });
+    },
+  },
+  modal: {
+    rules(s, i) {
+      const lines = modalText(i, 'rules').split(/\n+/).map((l) => l.replace(/^\s*(\d+[.)]|[-•*])\s*/, '').trim()).filter(Boolean);
+      s.answers.texts.customRules = lines.slice(0, MAX_RULES).map((l) => l.slice(0, 500));
+      if (lines.length > MAX_RULES) s.flash = `⚠️ Można dodać maksymalnie ${MAX_RULES} zasad – nadmiarowe pominięto.`;
+      if (lines.length && !s.answers.modules.includes('rules')) {
+        s.answers.modules = [...s.answers.modules, 'rules'];
+        s.flash = 'ℹ️ Włączono sekcję „Regulamin”, żeby Twoje zasady zostały opublikowane.';
+      }
+    },
+    faq(s, i) {
+      const raw = modalText(i, 'faq');
+      const parsed = parseFaq(raw);
+      s.answers.texts.customFaq = parsed;
+      s.answers.texts.faqDefaults = (modalSelect(i, 'defaults')[0] || 'keep') !== 'only';
+      if (raw.trim() && !parsed.length) s.flash = '⚠️ Nie rozpoznano pytań. Wpisz np. „Kiedy są eventy? | W piątki o 20:00”.';
+      if (parsed.length && !s.answers.modules.includes('faq')) {
+        s.answers.modules = [...s.answers.modules, 'faq'];
+        s.flash = 'ℹ️ Włączono sekcję „FAQ”, żeby Twoje pytania zostały opublikowane.';
+      }
+    },
+    announce(s, i) {
+      const text = modalText(i, 'text');
+      s.answers.texts.announcement = text ? {
+        title: modalText(i, 'title').slice(0, 200),
+        text: text.slice(0, 3500),
+        ping: ['none', 'role', 'everyone'].includes(modalSelect(i, 'ping')[0]) ? modalSelect(i, 'ping')[0] : 'none',
+      } : null;
+    },
+  },
+};
+
+// ───────────────────────────── 16. TRYB BUDOWY ─────────────────────────────
 
 const modeStep = {
   id: 'mode',
@@ -993,9 +1224,9 @@ const modeStep = {
 
 const STEPS = [
   typeStep, basicsStep, profileStep, styleStep, modulesStep, specialStep, staffStep, rolesStep,
-  permissionsStep, accessStep, securityStep, channelsStep, customStep, contentStep, modeStep,
+  permissionsStep, accessStep, securityStep, channelsStep, customStep, contentStep, textsStep, modeStep,
 ];
 
 const STEP_INDEX = Object.fromEntries(STEPS.map((step, i) => [step.id, i]));
 
-module.exports = { STEPS, STEP_INDEX, COMMUNITY_OPTIONS, ACCESS, VOICE_LAYOUTS, LIST_MAX };
+module.exports = { STEPS, STEP_INDEX, COMMUNITY_OPTIONS, ACCESS, VOICE_LAYOUTS, LIST_MAX, VERIFY_OPTIONS, CUSTOM_TARGETS, parseFaq, splitEmoji };

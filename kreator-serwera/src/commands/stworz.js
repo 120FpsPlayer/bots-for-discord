@@ -10,6 +10,14 @@ const data = new SlashCommandBuilder()
     'en-US': 'Opens a step-by-step wizard that builds your whole server (roles, channels, permissions).',
     'en-GB': 'Opens a step-by-step wizard that builds your whole server (roles, channels, permissions).',
   })
+  .addAttachmentOption((option) => option
+    .setName('projekt')
+    .setDescription('(opcjonalnie) Wczytaj zapisany projekt – plik .json z przycisku „Zapisz projekt”')
+    .setDescriptionLocalizations({
+      'en-US': '(optional) Load a saved project – the .json file from "Zapisz projekt"',
+      'en-GB': '(optional) Load a saved project – the .json file from "Zapisz projekt"',
+    })
+    .setRequired(false))
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
   .setContexts(InteractionContextType.Guild);
 

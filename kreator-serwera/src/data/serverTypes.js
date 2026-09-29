@@ -770,6 +770,182 @@ const SERVER_TYPES = {
     ],
   },
 
+  sport: {
+    label: 'Sport i fitness', emoji: '🏋️',
+    description: 'Dyscypliny, plany treningowe, dieta, postępy i wyzwania',
+    memberName: L('Sportowiec', 'Athlete'), memberEmoji: '🏃',
+    special: { name: L('Trening', 'Training'), emoji: '🏋️' },
+    modules: [...BASE_MODULES, 'introductions', 'qotd'],
+    staffExtras: [
+      { key: 'coach', name: L('Trener', 'Coach'), emoji: '🎯', level: 'none', color: 'staffExtra', description: 'Doradza w treningach', default: true },
+      { key: 'dietitian', name: L('Dietetyk', 'Nutritionist'), emoji: '🥗', level: 'none', color: 'func', description: 'Doradza w odżywianiu', default: false },
+    ],
+    specials: [
+      { key: 'competitor', name: L('Zawodnik', 'Competitor'), emoji: '🏅', color: 'special', hoist: true, description: 'Osoby startujące w zawodach', default: true },
+    ],
+    voiceLobby: { name: L('Szatnia', 'Locker room'), emoji: '🎧' },
+    list: {
+      title: 'Dyscypliny', question: 'Jakie dyscypliny mają mieć swoje kanały?',
+      placeholder: 'Siłownia, Bieganie, Piłka nożna, Kolarstwo, Sporty walki',
+      defaults: ['Siłownia', 'Bieganie', 'Piłka nożna', 'Kolarstwo'],
+      emoji: '🏅', roleEmoji: '🏅', category: L('Dyscypliny', 'Sports'), categoryEmoji: '🏅',
+      topic: L('Rozmowy o dyscyplinie: {item}.', 'Talk about {item}.'),
+      extra: null, voice: null,
+      options: ['text', 'role'], layout: 'shared', roleMentionable: true,
+    },
+    extras: [
+      ch('trainingPlans', '📋', L('plany-treningowe', 'training-plans'), L('Jeden plan = jeden post. Podaj cel, poziom i częstotliwość.', 'One plan per post: goal, level and frequency.'), { default: true, kind: 'forum', tags: [{ name: L('Początkujący', 'Beginner'), emoji: '🌱' }, { name: L('Średni', 'Intermediate'), emoji: '💪' }, { name: L('Zaawansowany', 'Advanced'), emoji: '🔥' }] }),
+      ch('progress', '📈', L('postępy', 'progress'), L('Pochwal się postępami – zdjęcia, wyniki, rekordy.', 'Share your progress – photos, results, PRs.'), { default: true, profile: 'media' }),
+      ch('diet', '🥗', L('dieta', 'nutrition'), L('Przepisy, makro i suplementacja.', 'Recipes, macros and supplements.'), { default: true }),
+      ch('challenges', '🏆', L('wyzwania', 'challenges'), L('Miesięczne wyzwania sportowe.', 'Monthly fitness challenges.'), { default: true, profile: 'readonly', posters: ['eventmgr', 'coach'] }),
+      ch('gear', '👟', L('sprzęt', 'gear'), L('Buty, zegarki, sprzęt na siłownię.', 'Shoes, watches, gym gear.'), { default: false }),
+      ch('liveWorkout', '🏋️', L('Trening na żywo', 'Live workout'), null, { default: true, kind: 'voice', cat: 'voice' }),
+    ],
+    rules: {
+      title: L('Zasady sportowe', 'Fitness rules'),
+      items: {
+        pl: ['Porady na serwerze nie zastępują lekarza ani trenera – przy problemach zdrowotnych skonsultuj się ze specjalistą.', 'Zakaz promowania dopingu, sterydów i niebezpiecznych diet.', 'Nie oceniamy wyglądu innych – wspieramy się w postępach.'],
+        en: ['Advice here does not replace a doctor or coach – consult a professional about health issues.', 'No promoting doping, steroids or dangerous diets.', 'We don\'t judge anyone\'s body – we support each other.'],
+      },
+    },
+  },
+
+  movies: {
+    label: 'Filmy i seriale', emoji: '🎬',
+    description: 'Gatunki, premiery, recenzje, polecajki i wspólne seanse',
+    memberName: L('Kinoman', 'Cinephile'), memberEmoji: '🍿',
+    special: { name: L('Kino', 'Cinema'), emoji: '🎬' },
+    modules: [...BASE_MODULES, 'qotd', 'polls'],
+    staffExtras: [
+      { key: 'critic', name: L('Recenzent', 'Critic'), emoji: '🖋️', level: 'none', color: 'staffExtra', description: 'Pisze recenzje serwera', default: true },
+    ],
+    voiceLobby: { name: L('Foyer', 'Lobby'), emoji: '🎟️' },
+    list: {
+      title: 'Gatunki', question: 'Jakie gatunki mają mieć swoje kanały?',
+      placeholder: 'Akcja, Komedia, Horror, Sci-Fi, Dramat, Animacja',
+      defaults: ['Akcja', 'Komedia', 'Horror', 'Sci-Fi', 'Dramat'],
+      emoji: '🎞️', roleEmoji: '🎞️', category: L('Gatunki', 'Genres'), categoryEmoji: '🎞️',
+      topic: L('Filmy i seriale: {item}. Spoilery w ||znacznikach||!', '{item} movies & shows. Use ||spoiler tags||!'),
+      extra: null, voice: null,
+      options: ['text', 'role'], layout: 'shared', roleMentionable: false,
+    },
+    extras: [
+      ch('premieres', '🗓️', L('premiery', 'premieres'), L('Nadchodzące premiery kinowe i serialowe.', 'Upcoming movie and show releases.'), { default: true, profile: 'readonly', posters: ['critic'] }),
+      ch('reviews', '⭐', L('recenzje', 'reviews'), L('Jedna recenzja = jeden post. Oceń w skali 1–10.', 'One review per post. Rate 1–10.'), { default: true, kind: 'forum', reaction: '⭐' }),
+      ch('recommendations', '💡', L('polecajki', 'recommendations'), L('Co warto obejrzeć? Polecaj i pytaj.', 'What to watch? Recommend and ask.'), { default: true, kind: 'forum' }),
+      ch('series', '📺', L('seriale', 'tv-shows'), L('Rozmowy o serialach – odcinek po odcinku.', 'Talk about TV shows episode by episode.'), { default: true }),
+      ch('spoilersM', '⚠️', L('spoilery', 'spoilers'), L('Tu wolno spoilerować – na własne ryzyko.', 'Spoilers allowed – enter at your own risk.'), { default: true }),
+      ch('movieNight', '🍿', L('Wspólny seans', 'Movie night'), null, { default: true, kind: 'voice', cat: 'voice' }),
+    ],
+    rules: {
+      title: L('Zasady kinomana', 'Movie fan rules'),
+      items: {
+        pl: ['Spoilery tylko w ||znacznikach|| lub na kanale #spoilery.', 'Zakaz udostępniania pirackich linków i nielegalnych streamów.', 'Szanuj gusta innych – krytykuj film, nie osobę.'],
+        en: ['Spoilers only in ||spoiler tags|| or the spoilers channel.', 'No piracy links or illegal streams.', 'Respect others\' tastes – critique the movie, not the person.'],
+      },
+    },
+  },
+
+  trading: {
+    label: 'Inwestycje / Krypto / Finanse', emoji: '📈',
+    description: 'Rynki, analizy, newsy, edukacja – z ochroną przed scamem',
+    memberName: L('Inwestor', 'Investor'), memberEmoji: '💹',
+    special: { name: L('Rynki', 'Markets'), emoji: '📈' }, specialPosition: 'afterNews',
+    modules: [...BASE_MODULES.filter((m) => m !== 'memes'), 'faq'],
+    staffExtras: [
+      { key: 'analyst', name: L('Analityk', 'Analyst'), emoji: '📊', level: 'none', color: 'staffExtra', description: 'Publikuje analizy', default: true },
+      { key: 'educator', name: L('Edukator', 'Educator'), emoji: '🎓', level: 'helper', color: 'helper', description: 'Pomaga początkującym', default: false },
+    ],
+    specials: [
+      { key: 'premiumT', name: L('Premium', 'Premium'), emoji: '💎', color: 'vip', hoist: true, description: 'Członkowie z dostępem premium', default: false },
+    ],
+    roleDefaults: { remove: ['colors', 'age'] },
+    voiceLobby: { name: L('Sala tradingowa', 'Trading room'), emoji: '💹' },
+    list: {
+      title: 'Rynki', question: 'Jakie rynki / aktywa mają mieć swoje kanały?',
+      placeholder: 'Akcje, Krypto, Forex, ETF, Surowce, Nieruchomości',
+      defaults: ['Akcje', 'Krypto', 'Forex', 'ETF'],
+      emoji: '💹', roleEmoji: '💹', category: L('Rynki', 'Markets'), categoryEmoji: '💹',
+      topic: L('Dyskusje o rynku: {item}. To nie jest porada inwestycyjna.', '{item} market talk. Not financial advice.'),
+      extra: null, voice: null,
+      options: ['text', 'role'], layout: 'shared', roleMentionable: true,
+    },
+    extras: [
+      ch('marketNews', '📰', L('newsy-rynkowe', 'market-news'), L('Najważniejsze wiadomości z rynków.', 'Key market news.'), { default: true, profile: 'readonly', posters: ['analyst'] }),
+      ch('analysis', '📊', L('analizy', 'analysis'), L('Analizy techniczne i fundamentalne – jedna analiza = jeden post.', 'Technical & fundamental analysis – one per post.'), { default: true, kind: 'forum', tags: [{ name: L('Techniczna', 'Technical'), emoji: '📉' }, { name: L('Fundamentalna', 'Fundamental'), emoji: '🏦' }, { name: L('Długoterminowa', 'Long-term'), emoji: '⏳' }] }),
+      ch('education', '🎓', L('edukacja', 'education'), L('Podstawy inwestowania, pojęcia, poradniki.', 'Investing basics, terms and guides.'), { default: true, profile: 'readonly', posters: ['analyst', 'educator'] }),
+      ch('scamAlerts', '🚨', L('ostrzeżenia-scam', 'scam-alerts'), L('Znane oszustwa – nikt z ekipy nie pisze pierwszy w DM!', 'Known scams – staff never DMs first!'), { default: true, profile: 'readonly' }),
+      ch('portfolios', '💼', L('portfele', 'portfolios'), L('Pokaż swój portfel i strategię (bez linków polecających).', 'Share your portfolio and strategy (no referral links).'), { default: true }),
+      ch('premiumChat', '💎', L('premium', 'premium'), L('Kanał dla członków premium.', 'Premium members channel.'), { default: false, cat: 'vip', access: ['premiumT'] }),
+    ],
+    rules: {
+      title: L('Zasady inwestycyjne', 'Investing rules'),
+      items: {
+        pl: ['Nic na tym serwerze nie jest poradą inwestycyjną – inwestujesz na własne ryzyko.', 'Zakaz pump & dump, „sygnałów” za opłatą i linków polecających.', 'Ekipa nigdy nie pisze pierwsza w DM i nie prosi o pieniądze ani klucze do portfela.', 'Zakaz reklamowania projektów krypto bez zgody administracji.'],
+        en: ['Nothing here is financial advice – invest at your own risk.', 'No pump & dump, paid "signals" or referral links.', 'Staff never DMs first and never asks for money or wallet keys.', 'No shilling crypto projects without staff approval.'],
+      },
+    },
+  },
+
+  event: {
+    label: 'Wydarzenie / Konferencja / Hackathon', emoji: '🎪',
+    description: 'Harmonogram, ścieżki, pytania do prelegentów, networking',
+    memberName: L('Uczestnik', 'Attendee'), memberEmoji: '🎟️',
+    special: { name: L('Wydarzenie', 'Event'), emoji: '🎪' }, specialPosition: 'afterNews',
+    modules: ['verification', 'rules', 'info', 'faq', 'roleinfo', 'welcome', 'announcements', 'general', 'introductions', 'media', 'botcmds', 'voice', 'stage', 'staff', 'logs'],
+    staffExtras: [
+      { key: 'organizer', name: L('Organizator', 'Organizer'), emoji: '🎪', level: 'admin', color: 'management', description: 'Organizuje wydarzenie', default: true },
+      { key: 'volunteer', name: L('Wolontariusz', 'Volunteer'), emoji: '🙌', level: 'helper', color: 'helper', description: 'Pomaga uczestnikom', default: true },
+    ],
+    specials: [
+      { key: 'speaker', name: L('Prelegent', 'Speaker'), emoji: '🎤', color: 'special', hoist: true, description: 'Prelegenci i mentorzy', default: true },
+      { key: 'sponsorE', name: L('Sponsor', 'Sponsor'), emoji: '💼', color: 'partner', hoist: true, description: 'Sponsorzy wydarzenia', default: true },
+    ],
+    roleDefaults: { remove: ['levels', 'colors', 'age'] },
+    voiceLobby: { name: L('Hol', 'Hall'), emoji: '🚪' },
+    list: {
+      title: 'Ścieżki / sale', question: 'Jakie ścieżki, sale lub bloki tematyczne ma wydarzenie?',
+      placeholder: 'Scena główna, Warsztaty, Frontend, Backend, Networking',
+      defaults: ['Scena główna', 'Warsztaty', 'Networking'],
+      emoji: '🎙️', roleEmoji: '🎙️', category: L('Ścieżki', 'Tracks'), categoryEmoji: '🎙️',
+      topic: L('Ścieżka: {item} – pytania, materiały i dyskusja.', 'Track: {item} – questions, materials and discussion.'),
+      extra: null, voice: { prefix: null, emoji: '🎙️' },
+      options: ['text', 'voice'], layout: 'shared', roleMentionable: false,
+    },
+    extras: [
+      ch('eventInfo', '📍', L('informacje-praktyczne', 'practical-info'), L('Kiedy, gdzie i jak dołączyć.', 'When, where and how to join.'), { default: true, profile: 'readonly', post: 'card:eventInfo' }),
+      ch('schedule', '🗓️', L('harmonogram', 'schedule'), L('Plan wydarzenia – godziny i sale.', 'Event schedule – times and rooms.'), { default: true, profile: 'readonly', posters: ['organizer'] }),
+      ch('speakerQs', '❓', L('pytania-do-prelegentów', 'speaker-questions'), L('Zadaj pytanie prelegentowi – jedno pytanie = jeden post.', 'Ask a speaker – one question per post.'), { default: true, kind: 'forum', reaction: '👍' }),
+      ch('teams', '🤝', L('szukam-zespołu', 'find-a-team'), L('Szukasz zespołu na hackathon? Napisz, co umiesz.', 'Looking for a hackathon team? Share your skills.'), { default: true, kind: 'forum' }),
+      ch('materials', '📂', L('materiały', 'materials'), L('Prezentacje i nagrania po wystąpieniach.', 'Slides and recordings after talks.'), { default: true, profile: 'readonly', posters: ['organizer', 'speaker'] }),
+      ch('sponsorsE', '💼', L('sponsorzy', 'sponsors'), L('Poznaj naszych sponsorów.', 'Meet our sponsors.'), { default: false, profile: 'readonly', posters: ['organizer'] }),
+    ],
+    infoFields: [
+      { key: 'date', label: 'Data i godzina', placeholder: '12–13 października 2026, start 10:00', max: 150 },
+      { key: 'place', label: 'Miejsce / link do transmisji', placeholder: 'Kraków, ICE / https://youtube.com/live/…', max: 300 },
+      { key: 'website', label: 'Strona i rejestracja (link)', placeholder: 'https://wydarzenie.pl', max: 200 },
+    ],
+    cards: {
+      eventInfo: {
+        needs: 'date',
+        title: L('📍 Informacje praktyczne', '📍 Practical information'),
+        description: L('Wszystko, co musisz wiedzieć, zanim dołączysz.', 'Everything you need to know before you join.'),
+        fields: [
+          { name: L('🗓️ Kiedy', '🗓️ When'), value: '{date}', needs: 'date', inline: true },
+          { name: L('📍 Gdzie', '📍 Where'), value: '{place}', needs: 'place', inline: true },
+          { name: L('🔗 Strona i rejestracja', '🔗 Website & registration'), value: '{website}', needs: 'website' },
+        ],
+      },
+    },
+    rules: {
+      title: L('Kodeks uczestnika', 'Code of conduct'),
+      items: {
+        pl: ['Traktuj wszystkich uczestników, prelegentów i wolontariuszy z szacunkiem.', 'Pytania do prelegentów zadawaj na kanale pytań – nie w wiadomościach prywatnych.', 'Nagrywanie i publikowanie wystąpień tylko za zgodą organizatorów.'],
+        en: ['Treat all attendees, speakers and volunteers with respect.', 'Ask speakers in the questions channel – not in DMs.', 'Recording and publishing talks only with the organizers\' consent.'],
+      },
+    },
+  },
+
   custom: {
     label: 'Własny projekt (od zera)', emoji: '🧩',
     description: 'Minimalny punkt startowy – sam wybierasz wszystko',

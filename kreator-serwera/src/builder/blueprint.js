@@ -109,10 +109,11 @@ function buildBlueprint(input, env = {}) {
     if (!def) return;
     const isExtra = !STAFF_ROLES[key];
     const level = STAFF_LEVELS[def.level] ? def.level : 'none';
+    const label = N.cleanName(answers.roleNames?.[key] || '', 80) || tr(def.name, lang);
     staffRoles.push({
       key,
-      name: roleName(def.emoji, tr(def.name, lang)),
-      label: tr(def.name, lang),
+      name: roleName(def.emoji, label),
+      label,
       emoji: def.emoji,
       color: colorOf(def.color),
       hoist: HOISTED_LEVELS.has(level),
@@ -213,7 +214,7 @@ function buildBlueprint(input, env = {}) {
 
   // Rola członka
   if (roleGroups.has('member')) {
-    const label = tr(preset.memberName, lang);
+    const label = N.cleanName(answers.roleNames?.member || '', 80) || tr(preset.memberName, lang);
     section('members', SEPARATORS.members, [{
       key: 'member', name: roleName(preset.memberEmoji, label), label, emoji: preset.memberEmoji,
       color: colorOf('member'), hoist: true, mentionable: false, permissions: gate ? memberPerms : [],
@@ -439,6 +440,13 @@ function buildBlueprint(input, env = {}) {
   const customCategories = [];
   (answers.customCategories || []).forEach((c, ci) => {
     const profile = { public: 'public', readonly: 'readonly', staff: 'staff', vip: 'vip' }[c.access] || 'public';
+    const target = c.target && c.target !== 'new' && (CATEGORIES[c.target] || c.target === 'special') ? c.target : null;
+    if (target) {
+      // Kanały dokładane do istniejącej sekcji – dostęp „publiczny” = zalecane ustawienia tej sekcji.
+      (c.text || []).forEach((name, i) => place(target, makeChannel({ key: `custom${ci}t${i}`, emoji: '💬', name }, { profile })));
+      (c.voice || []).forEach((name, i) => place(target, makeChannel({ key: `custom${ci}v${i}`, kind: 'voice', emoji: '🔊', name }, { profile })));
+      return;
+    }
     const cat = { key: `custom${ci}`, label: N.cleanName(c.name, 80) || `Kategoria ${ci + 1}`, emoji: c.emoji || '📁', profile, access: [], channels: [] };
     (c.text || []).forEach((name, i) => cat.channels.push(makeChannel({ key: `custom${ci}t${i}`, emoji: '💬', name })));
     (c.voice || []).forEach((name, i) => cat.channels.push(makeChannel({ key: `custom${ci}v${i}`, kind: 'voice', emoji: '🔊', name })));
@@ -557,6 +565,18 @@ function buildBlueprint(input, env = {}) {
     }
     messages.push({ channel: channel.key, kind: channel.post });
   }
+  const texts = answers.texts || {};
+  if (texts.announcement?.text?.trim()) {
+    const target = ['announcements', 'changelog', 'general'].find(hasChannel);
+    if (target) messages.push({ channel: target, kind: 'announcement' });
+    else warnings.push('Pierwsze ogłoszenie nie zostanie opublikowane – brak kanału ogłoszeń i czatu ogólnego.');
+  }
+  if ((texts.customFaq || []).length && !hasChannel('faq')) {
+    warnings.push('Masz własne pytania FAQ, ale sekcja „FAQ” jest wyłączona – włącz ją w kroku „Sekcje serwera”.');
+  }
+  if ((texts.customRules || []).length && !hasChannel('rules')) {
+    warnings.push('Masz własne zasady, ale sekcja „Regulamin” jest wyłączona – włącz ją w kroku „Sekcje serwera”.');
+  }
 
   // ── AUTOMOD ───────────────────────────────────────────────────────
   const automod = [];
@@ -601,6 +621,15 @@ function buildBlueprint(input, env = {}) {
     automod.push({
       key: 'invites', name: T('Kreator: zaproszenia Discord', 'Builder: Discord invites'), trigger: 'Keyword',
       metadata: { regexPatterns: [INVITE_REGEX] }, actions: actions(), exemptRoles: P.unique([...exemptRoles, ...existing(['partner'])]).slice(0, 20),
+    });
+  }
+  if (sel.has('profiles')) {
+    // Nicki i opisy profilu: osoba z pasującym nickiem nie może pisać, dopóki go nie zmieni.
+    automod.push({
+      key: 'profiles', name: T('Kreator: nicki i profile', 'Builder: names and profiles'), trigger: 'MemberProfile', event: 'MemberUpdate',
+      metadata: { keywordFilter: P.unique([...POLISH_PROFANITY, ...SCAM_KEYWORDS]).slice(0, 1000) },
+      actions: [{ type: 'blockInteraction' }, ...(alertChannel ? [{ type: 'alert', channel: alertChannel }] : [])],
+      exemptRoles,
     });
   }
 
@@ -713,6 +742,11 @@ function buildBlueprint(input, env = {}) {
       age: String(answers.age),
       mode: wipe ? 'wipe' : 'append',
       gate,
+      verify: gate ? {
+        captcha: (answers.security.verifyOptions || []).includes('captcha'),
+        minAgeDays: Math.max(0, ...(answers.security.verifyOptions || []).map((o) => ({ age1: 1, age7: 7, age30: 30 }[o] || 0))),
+        logChannel: (answers.security.verifyOptions || []).includes('log') ? ['logMembers', 'logMod', 'logServer', 'staffReports', 'staffChat'].find(hasChannel) || null : null,
+      } : null,
       embedColor,
     },
     guild,

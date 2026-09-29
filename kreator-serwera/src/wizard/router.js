@@ -7,9 +7,19 @@ const { channelPages, rolePages, summaryFields } = require('./preview');
 const {
   COLORS, cid, embed, field, button, row, selectRow, progressBar, modal, modalText, clip, ButtonStyle, formatDuration,
 } = require('./ui');
+const { loadProjectAttachment } = require('./project');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('kreator');
+
+/** Szybki kreator: tylko najważniejsze pytania, reszta z zalecanych ustawień. */
+const QUICK_STEPS = ['type', 'basics', 'profile', 'modules'];
+const FULL_STEPS = STEPS.map((st) => st.id);
+
+/** Kolejność kroków w bieżącym trybie (szybki / pełny). */
+function sequence(s) {
+  return s.quick && QUICK_STEPS.includes(s.step) ? QUICK_STEPS : FULL_STEPS;
+}
 
 /**
  * Router kreatora: renderuje panel (intro → kroki → podsumowanie → podgląd → budowa)
@@ -42,46 +52,51 @@ function createWizard({ store, config, runBuild }) {
           '4️⃣ Klikasz **Zbuduj serwer** – resztę robię ja ⚡',
           '',
           '💡 Na każdym etapie możesz przejść do **podsumowania** – pozostałe odpowiedzi uzupełnię zalecanymi wartościami.',
+          `⚡ **Szybki kreator** zada tylko ${QUICK_STEPS.length} najważniejsze pytania – resztę dobiorę sam.`,
+          '📥 Masz zapisany projekt? Wpisz `/stworz` i dołącz plik z przycisku **Zapisz projekt** w opcji **projekt**.',
         ].join('\n'),
         fields: [field('🔎 Sprawdzenie gotowości', checks.join('\n'))],
         footer,
       })],
       components: [row(
-        button(cid(s, 'n', 'start'), 'Rozpocznij', { style: ButtonStyle.Primary, emoji: '🚀', disabled: !env.botAdmin }),
+        button(cid(s, 'n', 'start'), `Pełny kreator (${STEPS.length} kroków)`, { style: ButtonStyle.Primary, emoji: '🚀', disabled: !env.botAdmin }),
+        button(cid(s, 'n', 'quick'), `Szybki kreator (${QUICK_STEPS.length} kroki)`, { style: ButtonStyle.Success, emoji: '⚡', disabled: !env.botAdmin }),
         button(cid(s, 'n', 'cancel'), 'Anuluj', { style: ButtonStyle.Danger, emoji: '✖️' }),
       )],
     };
   }
 
-  function navRow(s, index) {
+  function navRow(s, pos, total) {
+    const last = pos === total - 1;
     return row(
       button(cid(s, 'n', 'back'), 'Wstecz', { emoji: '◀️' }),
-      button(cid(s, 'n', 'next'), index === STEPS.length - 1 ? 'Podsumowanie' : 'Dalej', { style: ButtonStyle.Primary, emoji: '▶️' }),
-      button(cid(s, 'n', 'sum'), 'Podsumowanie', { style: ButtonStyle.Success, emoji: '⏭️', disabled: !s.typeChosen || index === STEPS.length - 1 }),
+      button(cid(s, 'n', 'next'), last ? 'Podsumowanie' : 'Dalej', { style: ButtonStyle.Primary, emoji: '▶️' }),
+      button(cid(s, 'n', 'sum'), 'Podsumowanie', { style: ButtonStyle.Success, emoji: '⏭️', disabled: !s.typeChosen || last }),
       button(cid(s, 'n', 'cancel'), 'Anuluj', { style: ButtonStyle.Danger, emoji: '✖️' }),
     );
   }
 
   function stepFrame(s) {
-    const index = STEP_INDEX[s.step];
-    const step = STEPS[index];
+    const step = STEPS[STEP_INDEX[s.step]];
+    const seq = sequence(s);
+    const pos = seq.indexOf(s.step);
     const view = step.render(s);
     const description = [
       s.flash ? `> ${s.flash}\n` : null,
       step.intro,
       view.lines?.length ? `\n${view.lines.join('\n')}` : null,
-      `\n${progressBar(index + 1, STEPS.length + 1)}`,
+      `\n${progressBar(pos + 1, seq.length + 1)}`,
     ].filter(Boolean).join('\n');
     s.flash = null;
     return {
       embeds: [embed({
-        title: `${step.emoji} Krok ${index + 1}/${STEPS.length} · ${step.title}`,
+        title: `${step.emoji} ${seq === QUICK_STEPS ? '⚡ ' : ''}Krok ${pos + 1}/${seq.length} · ${step.title}`,
         description,
         fields: view.fields || [],
         color: COLORS.primary,
         footer,
       })],
-      components: [...view.rows.slice(0, 4), navRow(s, index)],
+      components: [...view.rows.slice(0, 4), navRow(s, pos, seq.length)],
     };
   }
 
@@ -115,7 +130,7 @@ function createWizard({ store, config, runBuild }) {
           }),
           button(cid(s, 'n', 'pvc'), 'Kanały', { emoji: '📁' }),
           button(cid(s, 'n', 'pvr'), 'Role', { emoji: '🎭' }),
-          button(cid(s, 'n', 'export'), 'Eksport JSON', { emoji: '📄' }),
+          button(cid(s, 'n', 'export'), 'Zapisz projekt', { emoji: '💾' }),
         ),
         selectRow(cid(s, 's', 'goto'), {
           placeholder: '✏️ Zmień odpowiedź w kroku…',
@@ -204,8 +219,31 @@ function createWizard({ store, config, runBuild }) {
       existingRoles: guild.roles.cache.size,
       originChannelId: interaction.channelId,
     };
+    // /stworz projekt:<plik.json> – wczytanie zapisanego projektu i przejście od razu do podsumowania.
+    const attachment = interaction.options?.getAttachment?.('projekt');
+    let imported = null;
+    if (attachment) {
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        imported = await loadProjectAttachment(attachment);
+      } catch (err) {
+        return interaction.editReply({
+          embeds: [embed({ title: '📥 Nie udało się wczytać projektu', description: `${err.message}\n\nUżyj pliku z przycisku **Zapisz projekt** w podsumowaniu kreatora.`, color: COLORS.danger })],
+        });
+      }
+    }
+
     const session = store.create(guild.id, interaction.user.id, env);
-    log.info(`Nowa sesja ${session.id} na serwerze ${guild.name} (${guild.id}) – ${interaction.user.tag}`);
+    log.info(`Nowa sesja ${session.id} na serwerze ${guild.name} (${guild.id}) – ${interaction.user.tag}${imported ? ' (wczytany projekt)' : ''}`);
+
+    if (imported) {
+      session.answers = imported;
+      session.typeChosen = true;
+      session.step = 'summary';
+      session.flash = `📥 Wczytano projekt **${imported.basics.name || 'bez nazwy'}** – sprawdź podsumowanie. Tryb budowy ustawiono na „dodaj” (czyszczenie wybierzesz ręcznie w kroku „Tryb budowy”).`;
+      if (!env.botAdmin) session.flash += '\n❌ Bot nie ma uprawnienia Administrator – nadaj je przed budową.';
+      return interaction.editReply(render(session));
+    }
 
     const frame = introFrame(session);
     if (!env.botAdmin) {
@@ -273,21 +311,24 @@ function createWizard({ store, config, runBuild }) {
   }
 
   async function handleNav(s, interaction, id) {
-    const index = STEP_INDEX[s.step];
+    const seq = sequence(s);
+    const pos = seq.indexOf(s.step);
     switch (id) {
       case 'start':
+      case 'quick':
+        s.quick = id === 'quick';
         s.step = STEPS[0].id;
         break;
       case 'next': {
-        const error = STEPS[index]?.validate?.(s);
+        const error = STEPS[STEP_INDEX[s.step]]?.validate?.(s);
         if (error) { s.flash = `⚠️ ${error}`; break; }
-        s.step = index >= STEPS.length - 1 ? 'summary' : STEPS[index + 1].id;
+        s.step = pos >= seq.length - 1 ? 'summary' : seq[pos + 1];
         break;
       }
       case 'back':
-        if (s.step === 'summary') s.step = STEPS[STEPS.length - 1].id;
-        else if (index === 0) s.step = 'intro';
-        else if (index > 0) s.step = STEPS[index - 1].id;
+        if (s.step === 'summary') s.step = s.quick ? QUICK_STEPS[QUICK_STEPS.length - 1] : FULL_STEPS[FULL_STEPS.length - 1];
+        else if (pos === 0) s.step = 'intro';
+        else if (pos > 0) s.step = seq[pos - 1];
         break;
       case 'sum':
         if (!s.typeChosen) { s.flash = '⚠️ Najpierw wybierz typ serwera.'; break; }
@@ -327,7 +368,7 @@ function createWizard({ store, config, runBuild }) {
     const json = JSON.stringify({ answers: s.answers, blueprint: bp }, null, 2);
     const file = new AttachmentBuilder(Buffer.from(json, 'utf8'), { name: `kreator-${interaction.guildId}.json` });
     return interaction.reply({
-      content: '📄 **Eksport projektu serwera** – plik zawiera Twoje odpowiedzi i pełny plan (role, kanały, uprawnienia). Możesz go zachować jako kopię lub dokumentację.',
+      content: '📄 **Projekt serwera zapisany** – plik zawiera Twoje odpowiedzi i pełny plan (role, kanały, uprawnienia).\n📥 Aby go wczytać później (także na innym serwerze), wpisz `/stworz` i dołącz ten plik w opcji **projekt**.',
       files: [file],
       flags: MessageFlags.Ephemeral,
     });

@@ -32,6 +32,7 @@ const AUTOMOD_OPTIONS = {
   polishProfanity: { emoji: '🇵🇱', label: 'Polskie wulgaryzmy', description: 'Filtr najczęstszych polskich przekleństw' },
   presetSlurs: { emoji: '⛔', label: 'Obelgi i mowa nienawiści', description: 'Wbudowana lista obelg Discorda' },
   presetSexual: { emoji: '🔞', label: 'Treści seksualne', description: 'Wbudowana lista treści seksualnych' },
+  profiles: { emoji: '🪪', label: 'Filtr nicków i profili', description: 'Wulgarne lub scamowe nicki i opisy blokują pisanie' },
 };
 
 /** Polskie wulgaryzmy – wzorce z * (dowolne znaki). Dobrane tak, by ograniczyć fałszywe alarmy. */
