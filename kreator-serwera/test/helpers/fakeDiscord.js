@@ -147,7 +147,19 @@ class FakeChannel {
     this.parentId = data.parent ?? null;
     this.rateLimitPerUser = data.rateLimitPerUser ?? 0;
     this.userLimit = data.userLimit ?? 0;
-    this.permissionOverwrites = data.permissionOverwrites || [];
+    // Tablica (jak dane wejściowe) + widok `cache` jak w discord.js (PermissionOverwriteManager).
+    const overwrites = (data.permissionOverwrites || []).slice();
+    Object.defineProperty(overwrites, 'cache', {
+      get() {
+        return new Collection(overwrites.map((o) => [o.id, {
+          id: o.id,
+          type: o.type ?? OverwriteType.Role,
+          allow: new PermissionsBitField(o.allow ?? 0n),
+          deny: new PermissionsBitField(o.deny ?? 0n),
+        }]));
+      },
+    });
+    this.permissionOverwrites = overwrites;
     this.availableTags = data.availableTags || [];
     this.position = guild.channels.cache.size;
     this.messages = [];
@@ -374,10 +386,44 @@ class FakeGuild {
         if ([3, 4, 5, 6].includes(data.triggerType) && [...this.cache.values()].some((r) => r.triggerType === data.triggerType)) {
           throw apiError(30035, 'rule of this type already exists');
         }
-        const rule = { id: nextId(), name: data.name, triggerType: data.triggerType, data, delete: async () => { this.cache.delete(rule.id); } };
+        const rule = {
+          id: nextId(),
+          name: data.name,
+          triggerType: data.triggerType,
+          eventType: data.eventType,
+          triggerMetadata: data.triggerMetadata || {},
+          actions: data.actions.map((a) => ({ type: a.type, metadata: { ...a.metadata, channelId: a.metadata?.channel ?? a.metadata?.channelId } })),
+          exemptRoles: new Collection((data.exemptRoles || []).map((rid) => [rid, guild.roles.cache.get(rid) || { id: rid }])),
+          data,
+          delete: async () => { this.cache.delete(rule.id); guild.log.push(['automodDelete', data.name]); },
+        };
         this.cache.set(rule.id, rule);
         guild.log.push(['automodCreate', data.name]);
         return rule;
+      },
+    };
+
+    // Prostsze menedżery: emoji, naklejki, zaproszenia, bany, wydarzenia.
+    const manager = (kind) => ({
+      cache: new Collection(),
+      async fetch() { return new Collection(this.cache); },
+      add(item) {
+        const entry = { ...item, delete: async () => { this.cache.delete(entry.key); guild.log.push([`${kind}Delete`, entry.name ?? entry.key]); } };
+        this.cache.set(entry.key, entry);
+        return entry;
+      },
+    });
+    this.emojis = manager('emoji');
+    this.stickers = manager('sticker');
+    this.invites = manager('invite');
+    this.scheduledEvents = manager('event');
+    this.bans = {
+      cache: new Collection(),
+      async fetch({ limit = 1000 } = {}) { return new Collection([...this.cache].slice(0, limit)); },
+      async remove(userId) {
+        if (!this.cache.has(userId)) throw apiError(10026, 'Unknown Ban');
+        this.cache.delete(userId);
+        guild.log.push(['unban', userId]);
       },
     };
 
@@ -390,6 +436,43 @@ class FakeGuild {
         return this.cache.get(id);
       },
     };
+  }
+
+  /** Dodaje emoji, naklejki, zaproszenia, bany i wydarzenia (do testów /usun). */
+  seedExtras({ emojis = 0, managedEmojis = 0, stickers = 0, invites = 0, bans = 0, events = 0 } = {}) {
+    for (let i = 0; i < emojis; i += 1) { const id = nextId(); this.emojis.add({ key: id, id, name: `emoji${i}`, managed: false }); }
+    for (let i = 0; i < managedEmojis; i += 1) { const id = nextId(); this.emojis.add({ key: id, id, name: `twitch${i}`, managed: true }); }
+    for (let i = 0; i < stickers; i += 1) { const id = nextId(); this.stickers.add({ key: id, id, name: `naklejka${i}` }); }
+    for (let i = 0; i < invites; i += 1) this.invites.add({ key: `kod${i}`, code: `kod${i}` });
+    for (let i = 0; i < events; i += 1) { const id = nextId(); this.scheduledEvents.add({ key: id, id, name: `Wydarzenie ${i}` }); }
+    for (let i = 0; i < bans; i += 1) { const id = nextId(); this.bans.cache.set(id, { user: { id, tag: `zbanowany${i}` } }); }
+    return this;
+  }
+
+  get verificationLevel() { return this.settings.verificationLevel ?? 0; }
+
+  get explicitContentFilter() { return this.settings.explicitContentFilter ?? 0; }
+
+  get defaultMessageNotifications() { return this.settings.defaultMessageNotifications ?? 1; }
+
+  get systemChannelId() { return this.settings.systemChannel ?? null; }
+
+  get afkChannelId() { return this.settings.afkChannel ?? null; }
+
+  get afkTimeout() { return this.settings.afkTimeout ?? 300; }
+
+  get rulesChannelId() { return this.features.includes('COMMUNITY') ? this.settings.rulesChannel ?? null : null; }
+
+  get publicUpdatesChannelId() { return this.features.includes('COMMUNITY') ? this.settings.publicUpdatesChannel ?? null : null; }
+
+  get preferredLocale() { return this.settings.preferredLocale ?? 'en-US'; }
+
+  get description() { return this.settings.description ?? null; }
+
+  get memberCount() { return 42; }
+
+  iconURL() {
+    return this.iconSet ? 'https://cdn.discordapp.com/icons/1/abc.png' : null;
   }
 
   async fetch() {

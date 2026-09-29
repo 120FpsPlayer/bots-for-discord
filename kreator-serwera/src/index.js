@@ -6,11 +6,13 @@ const {
 const { config, validateConfig } = require('./config');
 const { createLogger } = require('./utils/logger');
 const { data: stworzCommand } = require('./commands/stworz');
+const { data: usunCommand } = require('./commands/usun');
 const { SessionStore } = require('./wizard/sessions');
 const { createWizard } = require('./wizard/router');
 const { runBuild, handleOriginDelete } = require('./wizard/build');
 const { handleUndo } = require('./wizard/undo');
 const { handleVerification, handleVerificationAnswer } = require('./features/verification');
+const { createCleanupPanel } = require('./cleanup/panel');
 
 const log = createLogger('bot');
 
@@ -25,22 +27,24 @@ if (problems.length) {
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const store = new SessionStore({ timeoutMinutes: config.sessionTimeoutMinutes });
 const wizard = createWizard({ store, config, runBuild });
+const cleanup = createCleanupPanel({ store });
+const COMMANDS = [stworzCommand, usunCommand].map((c) => c.toJSON());
 
 client.once(Events.ClientReady, async (c) => {
   log.info(`Zalogowano jako ${c.user.tag} • serwery: ${c.guilds.cache.size}`);
-  c.user.setPresence({ activities: [{ name: 'custom', type: ActivityType.Custom, state: '🛠️ /stworz – zbuduj swój serwer' }] });
+  c.user.setPresence({ activities: [{ name: 'custom', type: ActivityType.Custom, state: '🛠️ /stworz – zbuduj serwer • 🧹 /usun – wyczyść' }] });
 
   try {
     if (config.devGuildId) {
       const guild = await c.guilds.fetch(config.devGuildId);
-      await guild.commands.set([stworzCommand.toJSON()]);
-      log.info(`Komenda /stworz zarejestrowana na serwerze testowym ${guild.name} (działa od razu).`);
+      await guild.commands.set(COMMANDS);
+      log.info(`Komendy /stworz i /usun zarejestrowane na serwerze testowym ${guild.name} (działają od razu).`);
     } else {
-      await c.application.commands.set([stworzCommand.toJSON()]);
-      log.info('Komenda /stworz zarejestrowana globalnie (może pojawić się po kilku minutach).');
+      await c.application.commands.set(COMMANDS);
+      log.info('Komendy /stworz i /usun zarejestrowane globalnie (mogą pojawić się po kilku minutach).');
     }
   } catch (err) {
-    log.error('Nie udało się zarejestrować komendy /stworz:', err);
+    log.error('Nie udało się zarejestrować komend:', err);
   }
 
   const invite = c.generateInvite({
@@ -59,6 +63,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.isChatInputCommand()) {
       if (interaction.commandName === 'stworz') await wizard.start(interaction);
+      else if (interaction.commandName === 'usun') await cleanup.start(interaction);
       return;
     }
 
@@ -72,7 +77,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (interaction.isButton()) await handleOriginDelete(interaction);
         break;
       case 'wzu':
-        if (interaction.isButton()) await handleUndo(interaction);
+        if (interaction.isButton()) await handleUndo(interaction, store);
+        break;
+      case 'cl':
+        await cleanup.handle(interaction);
         break;
       case 'vf':
         if (interaction.isButton()) await handleVerification(interaction);

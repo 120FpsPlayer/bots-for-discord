@@ -2,7 +2,7 @@
 
 const { InteractionContextType, PermissionFlagsBits, SlashCommandBuilder } = require('discord.js');
 
-/** Jedyna komenda bota: /stworz – otwiera kreator serwera. */
+/** /stworz – otwiera kreator serwera (albo przywraca projekt / kopię zapasową z pliku). */
 const data = new SlashCommandBuilder()
   .setName('stworz')
   .setDescription('Otwiera kreator, który krok po kroku zbuduje cały serwer (role, kanały, uprawnienia).')
@@ -12,10 +12,10 @@ const data = new SlashCommandBuilder()
   })
   .addAttachmentOption((option) => option
     .setName('projekt')
-    .setDescription('(opcjonalnie) Wczytaj zapisany projekt – plik .json z przycisku „Zapisz projekt”')
+    .setDescription('(opcjonalnie) Plik .json: zapisany projekt albo kopia zapasowa z /usun')
     .setDescriptionLocalizations({
-      'en-US': '(optional) Load a saved project – the .json file from "Zapisz projekt"',
-      'en-GB': '(optional) Load a saved project – the .json file from "Zapisz projekt"',
+      'en-US': '(optional) .json file: a saved project or a backup from /usun',
+      'en-GB': '(optional) .json file: a saved project or a backup from /usun',
     })
     .setRequired(false))
   .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)

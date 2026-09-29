@@ -7,6 +7,8 @@ Po wpisaniu `/stworz` otwiera się interaktywny panel (widoczny tylko dla Ciebie
 wybierasz opcje z menu, wpisujesz własne nazwy i listy, oglądasz podgląd, a na końcu klikasz **Zbuduj serwer** –
 bot tworzy wszystko sam i pokazuje postęp na żywo.
 
+Druga komenda, **`/usun`**, czyści serwer (kanały, role, AutoMod i więcej) – z kopią zapasową, którą można przywrócić jednym poleceniem.
+
 ---
 
 ## ✨ Możliwości
@@ -31,6 +33,8 @@ bot tworzy wszystko sam i pokazuje postęp na żywo.
 | 🧨 **Tryb czyszczenia** | opcjonalnie usuwa stare kanały, role i AutoMod (tylko właściciel, wymaga wpisania nazwy serwera) |
 | ↩️ **Cofnij budowę** | nie podoba Ci się wynik? Jeden przycisk usuwa wszystko, co utworzył kreator, i przywraca ustawienia serwera (przez 2 godziny po budowie) |
 | 💾 **Zapisz i wczytaj projekt** | zapisz projekt do pliku i wczytaj go później – także na innym serwerze: `/stworz projekt:<plik>` |
+| 🧹 **Czyszczenie serwera `/usun`** | usuwa wybrane elementy: kanały i kategorie, role, AutoMod, wydarzenia, emoji i naklejki, zaproszenia, bany, ustawienia – tylko właściciel, z potwierdzeniem nazwą serwera i paskiem postępu |
+| ♻️ **Kopia zapasowa i przywracanie** | przed czyszczeniem bot wysyła plik kopii (także w wiadomości prywatnej); `/stworz projekt:<kopia>` odtwarza role, kanały, uprawnienia i AutoMod 1:1 |
 | ⚡ **Szybki kreator** | tylko 4 pytania (typ, nazwa, język/rozmiar, sekcje) – resztę bot dobiera sam |
 | 📁 **Własne kanały** | w nowej kategorii albo dorzucone do istniejącej sekcji (np. dodatkowe kanały w „Społeczności”) |
 | 👁️ **Podsumowanie i podgląd** | pełna lista kanałów i ról przed budową, szacowany czas |
@@ -84,12 +88,12 @@ bot tworzy wszystko sam i pokazuje postęp na żywo.
 W konsoli pojawi się **link zaproszenia** – otwórz go i dodaj bota na swój serwer.
 Link zawiera uprawnienie **Administrator** (`permissions=8`), które jest wymagane do tworzenia ról z uprawnieniami i nadpisań kanałów.
 
-> 💡 Komenda `/stworz` rejestruje się globalnie przy starcie (zwykle pojawia się od razu, czasem po kilku minutach).
+> 💡 Komendy `/stworz` i `/usun` rejestrują się globalnie przy starcie (zwykle pojawiają się od razu, czasem po kilku minutach).
 > Jeśli chcesz, żeby pojawiła się natychmiast na serwerze testowym, wpisz jego ID w `DEV_GUILD_ID`.
 
 ### 4. Przed budową
 - **Przeciągnij rolę bota na samą górę** listy ról (Ustawienia serwera → Role). Bot nie może zmieniać ani usuwać ról, które są nad nim.
-- Najlepiej budować na **nowym, pustym serwerze** – albo użyć trybu czyszczenia.
+- Najlepiej budować na **nowym, pustym serwerze** – albo najpierw wyczyścić serwer komendą **`/usun`** (lub trybem czyszczenia w kreatorze).
 
 ---
 
@@ -119,6 +123,51 @@ Wpisz **`/stworz`** na serwerze (komenda jest widoczna tylko dla administratoró
 
 Na każdym etapie możesz przejść od razu do **Podsumowania** – pozostałe odpowiedzi zostaną uzupełnione zalecanymi ustawieniami.
 Z podsumowania wrócisz do dowolnego kroku przez menu „Zmień odpowiedź w kroku…”.
+
+---
+
+## 🧹 Czyszczenie serwera – `/usun`
+
+Wpisz **`/usun`** – otworzy się panel (widoczny tylko dla Ciebie), w którym:
+
+1. **Widzisz, co jest na serwerze** – liczba kanałów (kategorie / tekstowe / fora / głosowe), ról (do usunięcia / ponad botem / role botów), reguł AutoMod, wydarzeń, emoji, naklejek, zaproszeń i banów.
+2. **Wybierasz, co usunąć** (domyślnie zaznaczone są kanały, role, AutoMod i wydarzenia):
+
+   | Opcja | Co robi |
+   |---|---|
+   | 💬 Kanały i kategorie | usuwa wszystkie kanały, fora i kategorie (poza kanałem, w którym wpisano komendę) |
+   | 🎭 Role | usuwa role poniżej roli bota; role botów i integracji zostają; @everyone wraca do domyślnych uprawnień |
+   | 🤖 Reguły AutoMod | usuwa wszystkie reguły automatycznej moderacji |
+   | 📅 Wydarzenia | usuwa zaplanowane wydarzenia |
+   | 😀 Emoji i naklejki | usuwa własne emoji i naklejki (emoji z integracji zostają) |
+   | 🔗 Zaproszenia | unieważnia wszystkie linki zaproszeń |
+   | ⚙️ Ustawienia serwera | weryfikacja, filtr multimediów, powiadomienia, kanał systemowy i AFK → domyślne |
+   | 🔓 Bany | zdejmuje bany (do 1000 za jednym razem) – ostrożnie! |
+
+3. **Opcje dodatkowe:** 💾 kopia zapasowa przed czyszczeniem (domyślnie włączona) i 🆕 kanały startowe `#ogólny` + 🔊 `Ogólny` jak na nowym serwerze.
+4. Klikasz **Wyczyść serwer** i **wpisujesz nazwę serwera** – bez tego nic nie zostanie usunięte.
+
+Bot pokazuje postęp na żywo (z przyciskiem **Przerwij**), a na końcu raport: co usunięto, ewentualne uwagi, link do nowego `#ogólny` i przycisk usunięcia kanału, z którego uruchomiono komendę.
+
+**Bezpieczeństwo:**
+- 🔒 `/usun` może użyć **tylko właściciel serwera** – nawet administratorzy nie mają dostępu (na wypadek przejęcia konta).
+- 👥 Bot **nigdy nie wyrzuca ani nie banuje członków** – usuwa tylko strukturę serwera.
+- 🌟 Tryb Społeczności jest wyłączany automatycznie, bo inaczej Discord nie pozwala usunąć kanału regulaminu.
+- ⏳ `/usun` i `/stworz` nie mogą działać jednocześnie na tym samym serwerze.
+
+### ♻️ Kopia zapasowa i przywracanie
+
+Przed czyszczeniem bot wysyła **plik kopii** (`kopia-<serwer>-<data>.json`) w panelu i w wiadomości prywatnej.
+Kopię możesz też zrobić w każdej chwili przyciskiem **Tylko kopia zapasowa** (bez usuwania czegokolwiek).
+
+Kopia zawiera: role (uprawnienia, kolory, kolejność, ikony), kategorie i kanały (uprawnienia „kto widzi / kto pisze”, tematy, slowmode, NSFW, limity, tagi forów), reguły AutoMod, ustawienia serwera, tryb Społeczności oraz nazwę i ikonę.
+**Nie zawiera** wiadomości, członków i przypisanych im ról, emoji ani banów – Discord nie pozwala ich odtworzyć.
+
+Aby przywrócić: wpisz **`/stworz`** i dołącz plik kopii w opcji **projekt**. Zobaczysz ekran przywracania, na którym wybierzesz:
+- tryb: **➕ dodaj** do obecnego serwera albo **🧨 wyczyść i przywróć** (tylko właściciel, z potwierdzeniem nazwą),
+- co jeszcze przywrócić: nazwę i ikonę, ustawienia, AutoMod, tryb Społeczności,
+
+a przed startem obejrzysz podgląd kanałów i ról. Przywracanie też można cofnąć przyciskiem **Cofnij budowę**.
 
 ---
 
@@ -156,6 +205,8 @@ roli zarządzanej przez integrację ani roli powyżej bota – nawet gdyby ktoś
 | Nie widzę komendy `/stworz` | Poczekaj kilka minut albo ustaw `DEV_GUILD_ID`. Komendę widzą tylko osoby z uprawnieniem Administrator. |
 | „Bot potrzebuje uprawnienia Administrator” | Ustawienia serwera → Role → rola bota → włącz **Administrator** (albo zaproś bota linkiem z konsoli). |
 | Niektóre role nie zostały usunięte | Są powyżej roli bota – przeciągnij rolę bota na samą górę i uruchom czyszczenie ponownie. |
+| `/usun` odpowiada „Tylko dla właściciela” | To celowe zabezpieczenie – czyścić serwer może tylko jego właściciel. |
+| Po przywróceniu kopii członkowie nie mają ról | Discord usuwa przypisania razem z rolami, a bot (bez uprawnienia do listy członków) nie może ich zapisać – nadaj role ponownie. |
 | Kanały ogłoszeń / scena są zwykłymi kanałami | Tryb Społeczności był wyłączony lub Discord go odrzucił – włącz go w kroku 14. |
 | Przycisk weryfikacji nie działa | Bot musi być **online** – przycisk obsługuje ten sam bot. |
 | Hosting: `SyntaxError: Invalid or unexpected token` w `start.sh` | Jako plik startowy ustaw **`index.js`**, a nie `start.sh`. |
@@ -170,9 +221,13 @@ roli zarządzanej przez integrację ani roli powyżej bota – nawet gdyby ktoś
 kreator-serwera/
 ├── index.js                    # plik startowy (ustaw go na hostingu)
 ├── src/
-│   ├── index.js                # klient Discord, rejestracja /stworz, obsługa interakcji
+│   ├── index.js                # klient Discord, rejestracja /stworz i /usun, obsługa interakcji
 │   ├── config.js               # wczytywanie .env i walidacja konfiguracji
-│   ├── commands/stworz.js      # definicja jedynej komendy
+│   ├── commands/               # definicje komend /stworz i /usun
+│   ├── cleanup/                # komenda /usun
+│   │   ├── panel.js            # panel czyszczenia (wybór, potwierdzenie, postęp, raport)
+│   │   ├── cleaner.js          # silnik czyszczenia
+│   │   └── snapshot.js         # kopia zapasowa serwera i jej wczytywanie
 │   ├── wizard/                 # panel kreatora
 │   │   ├── router.js           # ekrany i nawigacja
 │   │   ├── steps.js            # 16 kroków z pytaniami
@@ -206,7 +261,8 @@ npm test
 
 Testy nie łączą się z Discordem – używają atrapy serwera, która sprawdza wszystkie limity Discorda
 (długości nazw, 50 kanałów na kategorię, 500 kanałów, 250 ról, limity embedów i komponentów, wymagania trybu Społeczności, reguły AutoMod).
-Symulują pełne przejście kreatora dla każdego typu serwera i pełną budowę w trybie dodawania i czyszczenia.
+Symulują pełne przejście kreatora dla każdego typu serwera i pełną budowę w trybie dodawania i czyszczenia,
+a także `/usun` (każda opcja, przerwanie, blokady, tylko właściciel) oraz kopię zapasową z przywróceniem 1:1.
 
 ---
 

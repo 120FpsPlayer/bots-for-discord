@@ -39,7 +39,9 @@ async function runBuild({ session, blueprint, interaction }) {
     phases.push(`⏳ **${state.phase}**${state.label ? ` – ${clip(state.label, 80)}` : ''}`);
     return {
       embeds: [embed({
-        title: session.answers.mode.type === 'wipe' ? '🧨 Czyszczę i buduję serwer…' : '🏗️ Buduję serwer…',
+        title: blueprint.meta.type === 'backup'
+          ? (blueprint.meta.mode === 'wipe' ? '🧨 Czyszczę serwer i przywracam kopię…' : '♻️ Przywracam kopię zapasową…')
+          : (blueprint.meta.mode === 'wipe' ? '🧨 Czyszczę i buduję serwer…' : '🏗️ Buduję serwer…'),
         color: COLORS.build,
         description: [
           `${progressBar(state.done, state.total, 18)}`,
@@ -95,11 +97,12 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
   const c = result.created;
   const d = result.deleted;
   const problems = [...result.errors.map((e) => `❌ ${e}`), ...result.warnings.map((w) => `⚠️ ${w}`)];
-  let title = '🎉 Serwer gotowy!';
+  const backup = blueprint.meta.type === 'backup';
+  let title = backup ? '♻️ Kopia zapasowa przywrócona!' : '🎉 Serwer gotowy!';
   let color = COLORS.success;
   if (result.fatal) { title = '💥 Budowa przerwana przez błąd'; color = COLORS.danger; }
   else if (result.aborted) { title = '⛔ Budowa przerwana'; color = COLORS.warning; }
-  else if (result.errors.length) { title = '✅ Serwer zbudowany (z uwagami)'; color = COLORS.warning; }
+  else if (result.errors.length) { title = backup ? '♻️ Kopia przywrócona (z uwagami)' : '✅ Serwer zbudowany (z uwagami)'; color = COLORS.warning; }
 
   const fields = [
     field('📊 Utworzono', [
@@ -118,14 +121,21 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
   fields.push(field('🔑 Uprawnienia kanałów', [
     `⚙️ Ustawiono **${c.overwrites}** nadpisań uprawnień`,
     `💬 ${st.open} otwartych • 👁️ ${st.readonly} tylko do odczytu • 🔒 ${st.hidden} ukrytych`,
-    blueprint.meta.gate ? '✅ Nowe osoby widzą tylko regulamin i weryfikację' : '👥 Nowe osoby od razu widzą kanały dla członków',
+    backup ? '♻️ Uprawnienia odtworzone 1:1 z kopii' : blueprint.meta.gate ? '✅ Nowe osoby widzą tylko regulamin i weryfikację' : '👥 Nowe osoby od razu widzą kanały dla członków',
   ].join('\n')));
   if (result.fatal) fields.push(field('💥 Błąd krytyczny', result.fatal));
   if (problems.length) {
     const shown = problems.slice(0, 12).join('\n');
     fields.push(field(`📝 Uwagi (${problems.length})`, problems.length > 12 ? `${clip(shown, 900)}\n…i ${problems.length - 12} więcej (pełna lista w konsoli bota)` : shown));
   }
-  fields.push(field('🚀 Następne kroki', [
+  if (backup) {
+    fields.push(field('🚀 Następne kroki', [
+      '1. **Przeciągnij rolę bota na samą górę** listy ról (Ustawienia → Role).',
+      '2. **Nadaj role członkom ponownie** – Discord usuwa przypisania razem z rolami, a kopia ich nie przechowuje.',
+      '3. Zaproś ponownie boty, jeśli zostały usunięte – ich role utworzą się same.',
+      '↩️ Coś nie tak? **Cofnij budowę** usunie wszystko, co przywróciłem (przez 2 godziny).',
+    ].join('\n')));
+  } else fields.push(field('🚀 Następne kroki', [
     '1. **Przeciągnij rolę bota na samą górę** listy ról (Ustawienia → Role).',
     '2. Nadaj role ekipie i sprawdź regulamin – dopasuj go do siebie.',
     '3. Dodaj boty (moderacja/logi, poziomy, muzyka) i nadaj im rolę **Boty**.',
@@ -135,7 +145,8 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
 
   const link = (key) => (result.channels[key] ? `https://discord.com/channels/${guild.id}/${result.channels[key]}` : null);
   const buttons = [];
-  const general = link('general') || link('rules');
+  const firstText = backup ? blueprint.categories.flatMap((c) => c.channels).find((c) => ['text', 'announcement'].includes(c.kind) && result.channels[c.key]) : null;
+  const general = link('general') || link('rules') || (firstText ? link(firstText.key) : null);
   if (general) buttons.push(linkButton(general, 'Przejdź na serwer', '💬'));
   if (link('rules') && general !== link('rules')) buttons.push(linkButton(link('rules'), 'Regulamin', '📜'));
   if (link('staffChat')) buttons.push(linkButton(link('staffChat'), 'Czat ekipy', '🛡️'));
@@ -149,7 +160,9 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
     ? 'Budowa zatrzymała się z powodu błędu. Elementy utworzone do tej pory zostały na serwerze.'
     : result.aborted
       ? 'Budowa została przerwana. Elementy utworzone do tej pory zostały na serwerze – możesz je usunąć ręcznie lub uruchomić kreator ponownie w trybie czyszczenia.'
-      : `Serwer **${guild.name}** został zbudowany zgodnie z Twoim projektem. Raport trafił też na kanał ekipy.`;
+      : backup
+        ? `Struktura serwera **${guild.name}** została odtworzona z kopii zapasowej.`
+        : `Serwer **${guild.name}** został zbudowany zgodnie z Twoim projektem. Raport trafił też na kanał ekipy.`;
 
   return {
     embeds: [embed({ title, description, color, fields, footer: `Kreator Serwera • sesja ${session.id}` })],

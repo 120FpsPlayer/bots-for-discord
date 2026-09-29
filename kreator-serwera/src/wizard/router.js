@@ -8,6 +8,7 @@ const {
   COLORS, cid, embed, field, button, row, selectRow, progressBar, modal, modalText, clip, ButtonStyle, formatDuration,
 } = require('./ui');
 const { loadProjectAttachment } = require('./project');
+const { computeStats } = require('../cleanup/snapshot');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('kreator');
@@ -53,7 +54,8 @@ function createWizard({ store, config, runBuild }) {
           '',
           '💡 Na każdym etapie możesz przejść do **podsumowania** – pozostałe odpowiedzi uzupełnię zalecanymi wartościami.',
           `⚡ **Szybki kreator** zada tylko ${QUICK_STEPS.length} najważniejsze pytania – resztę dobiorę sam.`,
-          '📥 Masz zapisany projekt? Wpisz `/stworz` i dołącz plik z przycisku **Zapisz projekt** w opcji **projekt**.',
+          '📥 Masz zapisany projekt albo kopię zapasową z `/usun`? Wpisz `/stworz` i dołącz plik w opcji **projekt**.',
+          '🧹 Chcesz zacząć od czystego serwera? Najpierw użyj **/usun** (z kopią zapasową).',
         ].join('\n'),
         fields: [field('🔎 Sprawdzenie gotowości', checks.join('\n'))],
         footer,
@@ -101,8 +103,115 @@ function createWizard({ store, config, runBuild }) {
   }
 
   function computeBlueprint(s) {
+    if (s.restore) return (s.blueprint = restoreBlueprint(s));
     s.blueprint = buildBlueprint(s.answers, { existingChannels: s.env.existingChannels, existingRoles: s.env.existingRoles });
     return s.blueprint;
+  }
+
+  // ───────────── Przywracanie kopii zapasowej (z /usun) ─────────────
+
+  const RESTORE_OPTIONS = {
+    identity: { emoji: '🏷️', label: 'Nazwa i ikona serwera', description: 'Przywróć nazwę i ikonę z kopii' },
+    settings: { emoji: '⚙️', label: 'Ustawienia serwera', description: 'Weryfikacja, filtr, powiadomienia, kanał systemowy, AFK' },
+    automod: { emoji: '🤖', label: 'Reguły AutoMod', description: 'Przywróć reguły automatycznej moderacji' },
+    community: { emoji: '🌟', label: 'Tryb Społeczności', description: 'Włącz Społeczność z kanałem regulaminu z kopii' },
+  };
+
+  /** Blueprint z kopii z uwzględnieniem wybranych opcji i trybu (dodaj / wyczyść). */
+  function restoreBlueprint(s) {
+    const r = s.restore;
+    const bp = JSON.parse(JSON.stringify(r.blueprint));
+    const on = (k) => r.options.includes(k);
+    bp.meta.mode = r.mode;
+    if (!on('identity')) { bp.guild.name = null; bp.guild.iconUrl = null; }
+    if (!on('settings')) {
+      Object.assign(bp.guild, { verificationLevel: s.env.verificationLevel ?? 0, explicitContentFilter: s.env.explicitContentFilter ?? 0, defaultNotifications: s.env.defaultNotifications ?? 1, systemChannel: null, afkChannel: null });
+    }
+    if (!on('automod')) bp.automod = [];
+    if (!on('community')) bp.guild.community = null;
+    bp.stats = computeStats(bp);
+    const errors = [];
+    if (r.mode === 'append') {
+      const channels = s.env.existingChannels + bp.stats.channels + bp.stats.categories;
+      const roles = s.env.existingRoles + bp.stats.roles;
+      if (channels > 500) errors.push(`Za dużo kanałów: ${s.env.existingChannels} na serwerze + ${bp.stats.channels + bp.stats.categories} z kopii > 500. Wybierz tryb „Wyczyść i przywróć” albo najpierw użyj /usun.`);
+      if (roles > 250) errors.push(`Za dużo ról: ${s.env.existingRoles} na serwerze + ${bp.stats.roles} z kopii > 250. Wybierz tryb „Wyczyść i przywróć” albo najpierw użyj /usun.`);
+    }
+    bp.errors = errors;
+    return bp;
+  }
+
+  function restoreFrame(s) {
+    const r = s.restore;
+    const bp = computeBlueprint(s);
+    const st = bp.stats;
+    const wipe = r.mode === 'wipe';
+    const created = r.createdAt ? `<t:${Math.floor(new Date(r.createdAt).getTime() / 1000)}:f>` : 'nieznana data';
+    const description = [
+      s.flash ? `> ${s.flash}\n` : null,
+      `Wczytano **kopię zapasową** serwera **${clip(r.guildName || bp.guild.name || 'bez nazwy', 80)}** z ${created}.`,
+      'Odtworzę role (z uprawnieniami, kolorami i kolejnością), kategorie i kanały (z uprawnieniami, tematami i ustawieniami) oraz wybrane poniżej elementy.',
+      bp.errors.length ? `\n${bp.errors.map((e) => `❌ ${e}`).join('\n')}` : null,
+    ].filter(Boolean).join('\n');
+    s.flash = null;
+    return {
+      embeds: [embed({
+        title: '♻️ Przywracanie kopii zapasowej',
+        color: bp.errors.length ? COLORS.danger : wipe ? COLORS.warning : COLORS.success,
+        description,
+        fields: [
+          field('📦 Zawartość kopii', [
+            `🎭 **${st.roles}** ról`,
+            `📁 **${st.categories}** kategorii • 💬 **${st.channels}** kanałów (# ${st.text - st.forums} • 🗂️ ${st.forums} • 🔊 ${st.voice})`,
+            `🔑 **${st.overwrites}** nadpisań uprawnień`,
+            `🤖 **${r.blueprint.automod.length}** reguł AutoMod`,
+          ].join('\n'), true),
+          field('🧭 Tryb', wipe
+            ? '🧨 **Wyczyść i przywróć** – najpierw usunę obecne kanały, role i AutoMod, potem odtworzę kopię.'
+            : '➕ **Dodaj** – kopia zostanie dodana obok tego, co już jest na serwerze.', true),
+          field('✅ Przywrócę też', Object.entries(RESTORE_OPTIONS).map(([k, o]) => `${r.options.includes(k) ? '✅' : '❌'} ${o.label}`).join('\n'), true),
+          field('ℹ️ Czego nie ma w kopii', 'Wiadomości, członków, emoji, naklejek, banów i zaproszeń – Discord nie pozwala ich odtworzyć. Role botów dodadzą się same po ponownym zaproszeniu botów.'),
+        ],
+        footer,
+      })],
+      components: [
+        selectRow(cid(s, 'r', 'mode'), {
+          placeholder: '🧭 Tryb przywracania',
+          options: [
+            { value: 'append', label: 'Dodaj do obecnego serwera', description: 'Nic nie usuwam – kopia pojawi się obok obecnych kanałów', emoji: '➕', default: !wipe },
+            { value: 'wipe', label: 'Wyczyść i przywróć (tylko właściciel)', description: 'Usuwam obecne kanały i role, potem odtwarzam kopię', emoji: '🧨', default: wipe },
+          ],
+        }),
+        selectRow(cid(s, 'r', 'opts'), {
+          placeholder: '✅ Co jeszcze przywrócić?',
+          min: 0,
+          max: Object.keys(RESTORE_OPTIONS).length,
+          options: Object.entries(RESTORE_OPTIONS).map(([k, o]) => ({ value: k, label: o.label, description: o.description, emoji: o.emoji, default: r.options.includes(k) })),
+        }),
+        row(
+          button(cid(s, 'n', 'build'), wipe ? 'Wyczyść i przywróć' : 'Przywróć kopię', { style: wipe ? ButtonStyle.Danger : ButtonStyle.Success, emoji: '♻️', disabled: bp.errors.length > 0 || !s.env.botAdmin }),
+          button(cid(s, 'n', 'pvc'), 'Kanały', { emoji: '📁' }),
+          button(cid(s, 'n', 'pvr'), 'Role', { emoji: '🎭' }),
+          button(cid(s, 'n', 'cancel'), 'Anuluj', { style: ButtonStyle.Danger, emoji: '✖️' }),
+        ),
+      ],
+    };
+  }
+
+  function handleRestore(s, interaction, id) {
+    if (!s.restore) return interaction.update(render(s));
+    if (id === 'mode') {
+      const mode = interaction.values[0] === 'wipe' ? 'wipe' : 'append';
+      if (mode === 'wipe' && interaction.guild.ownerId !== interaction.user.id) {
+        s.flash = '🔒 Tryb „Wyczyść i przywróć” jest dostępny tylko dla właściciela serwera.';
+      } else {
+        s.restore.mode = mode;
+        s.answers.mode.type = mode;
+      }
+    } else if (id === 'opts') {
+      s.restore.options = interaction.values.filter((v) => RESTORE_OPTIONS[v]);
+    }
+    return interaction.update(render(s));
   }
 
   function summaryFrame(s) {
@@ -170,6 +279,7 @@ function createWizard({ store, config, runBuild }) {
 
   function render(s) {
     if (s.view) return previewFrame(s);
+    if (s.restore) return restoreFrame(s);
     if (s.step === 'intro') return introFrame(s);
     if (s.step === 'summary') return summaryFrame(s);
     return stepFrame(s);
@@ -199,6 +309,13 @@ function createWizard({ store, config, runBuild }) {
         flags: MessageFlags.Ephemeral,
       });
     }
+    const busy = store.lockedBy(guild.id);
+    if (busy) {
+      return interaction.reply({
+        embeds: [embed({ title: '⏳ Serwer jest zajęty', description: `Na tym serwerze trwa teraz: **${busy}**. Poczekaj, aż się zakończy, i użyj /stworz ponownie.`, color: COLORS.warning })],
+        flags: MessageFlags.Ephemeral,
+      });
+    }
     if (existing && existing.userId !== interaction.user.id && !isOwner) {
       const minutes = Math.max(1, Math.ceil((store.timeoutMs - (Date.now() - existing.updatedAt)) / 60_000));
       return interaction.reply({
@@ -218,6 +335,9 @@ function createWizard({ store, config, runBuild }) {
       existingChannels: guild.channels.cache.filter((c) => !c.isThread()).size,
       existingRoles: guild.roles.cache.size,
       originChannelId: interaction.channelId,
+      verificationLevel: guild.verificationLevel,
+      explicitContentFilter: guild.explicitContentFilter,
+      defaultNotifications: guild.defaultMessageNotifications,
     };
     // /stworz projekt:<plik.json> – wczytanie zapisanego projektu i przejście od razu do podsumowania.
     const attachment = interaction.options?.getAttachment?.('projekt');
@@ -228,15 +348,26 @@ function createWizard({ store, config, runBuild }) {
         imported = await loadProjectAttachment(attachment);
       } catch (err) {
         return interaction.editReply({
-          embeds: [embed({ title: '📥 Nie udało się wczytać projektu', description: `${err.message}\n\nUżyj pliku z przycisku **Zapisz projekt** w podsumowaniu kreatora.`, color: COLORS.danger })],
+          embeds: [embed({ title: '📥 Nie udało się wczytać pliku', description: `${err.message}\n\nUżyj pliku z przycisku **Zapisz projekt** w podsumowaniu kreatora albo kopii zapasowej z komendy **/usun**.`, color: COLORS.danger })],
         });
       }
     }
 
     const session = store.create(guild.id, interaction.user.id, env);
-    log.info(`Nowa sesja ${session.id} na serwerze ${guild.name} (${guild.id}) – ${interaction.user.tag}${imported ? ' (wczytany projekt)' : ''}`);
+    log.info(`Nowa sesja ${session.id} na serwerze ${guild.name} (${guild.id}) – ${interaction.user.tag}${imported ? ` (wczytany plik: ${imported.kind})` : ''}`);
+
+    if (imported?.kind === 'backup') {
+      session.restore = { blueprint: imported.blueprint, guildName: imported.guildName, createdAt: imported.createdAt, mode: 'append', options: ['identity', 'settings', 'automod', 'community'] };
+      session.answers.mode.type = 'append';
+      session.typeChosen = true;
+      session.step = 'summary';
+      if (!env.botAdmin) session.flash = '❌ Bot nie ma uprawnienia Administrator – nadaj je przed przywracaniem.';
+      else if (!isOwner) session.flash = 'ℹ️ Tryb „Wyczyść i przywróć” może wybrać tylko właściciel serwera.';
+      return interaction.editReply(render(session));
+    }
 
     if (imported) {
+      imported = imported.answers;
       session.answers = imported;
       session.typeChosen = true;
       session.step = 'summary';
@@ -304,6 +435,9 @@ function createWizard({ store, config, runBuild }) {
       if (interaction.isFromMessage()) return interaction.update(render(session));
       return interaction.reply({ ...render(session), flags: MessageFlags.Ephemeral });
     }
+
+    // Przywracanie kopii zapasowej
+    if (kind === 'r') return handleRestore(session, interaction, id);
 
     // Nawigacja
     if (kind === 'n') return handleNav(session, interaction, id, arg);
@@ -375,6 +509,11 @@ function createWizard({ store, config, runBuild }) {
   }
 
   async function startBuild(s, interaction) {
+    const busy = store.lockedBy(s.guildId);
+    if (busy) {
+      s.flash = `⏳ Na serwerze trwa teraz: ${busy}. Poczekaj, aż się zakończy.`;
+      return interaction.update(render(s));
+    }
     const bp = computeBlueprint(s);
     if (bp.errors.length) {
       s.flash = '❌ Najpierw popraw problemy wymienione w podsumowaniu.';

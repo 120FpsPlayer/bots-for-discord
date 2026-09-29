@@ -200,7 +200,7 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
         reason,
       };
       const created = await attempt(`Rola „${role.name}”`, async () => {
-        if (roleIcons && role.hoist && role.emoji && !role.separator) {
+        if (roleIcons && (role.hoist || bp.meta.type === 'backup') && role.emoji && !role.separator) {
           try {
             return await guild.roles.create({ ...base, unicodeEmoji: role.emoji });
           } catch {
@@ -228,7 +228,10 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
       let id;
       if (o.target === '@everyone') id = guild.id;
       else if (o.target === '@booster') id = boosterRoleId;
-      else id = R.roles[o.target];
+      else if (typeof o.target === 'string' && o.target.startsWith('user:')) {
+        // Nadpisanie dla konkretnej osoby (np. z kopii zapasowej serwera).
+        return { id: o.target.slice(5), type: OverwriteType.Member, allow: toBits(o.allow), deny: toBits(o.deny) };
+      } else id = R.roles[o.target];
       if (!id) return null;
       return { id, type: OverwriteType.Role, allow: toBits(o.allow), deny: toBits(o.deny) };
     }).filter(Boolean);
@@ -236,6 +239,19 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
     const toConvert = [];
     const deferred = [];
     const categoryIds = {};
+
+    // Nadpisania dla osób (z kopii zapasowej) mogą wskazywać kogoś, kogo już nie ma na serwerze –
+    // wtedy Discord odrzuca cały kanał. Ponawiamy bez nich, żeby kanał i tak powstał.
+    const createGuildChannel = async (opts) => {
+      try {
+        return await guild.channels.create(opts);
+      } catch (err) {
+        const personal = (opts.permissionOverwrites || []).filter((o) => o.type === OverwriteType.Member);
+        if (!personal.length || err?.code === 50013) throw err;
+        R.warnings.push(`${opts.name}: pominięto ${personal.length} uprawnień dla osób, których nie ma już na serwerze.`);
+        return guild.channels.create({ ...opts, permissionOverwrites: opts.permissionOverwrites.filter((o) => o.type !== OverwriteType.Member) });
+      }
+    };
 
     const channelOptions = (ch, parentId, type) => {
       const opts = {
@@ -272,7 +288,7 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
       if (kind === 'forum') {
         try {
           checkAbort();
-          return await guild.channels.create(channelOptions(ch, parentId, ChannelType.GuildForum));
+          return await createGuildChannel(channelOptions(ch, parentId, ChannelType.GuildForum));
         } catch (err) {
           if (err instanceof BuildAborted) throw err;
           if (wantCommunity && !communityOn) {
@@ -283,11 +299,26 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
           kind = 'text';
         }
       }
-      return attempt(`Kanał ${ch.name}`, () => guild.channels.create(channelOptions(ch, parentId, KIND_TYPE[kind])));
+      return attempt(`Kanał ${ch.name}`, () => createGuildChannel(channelOptions(ch, parentId, KIND_TYPE[kind])));
     };
 
     for (const cat of bp.categories) {
-      const category = await attempt(`Kategoria ${cat.name}`, () => guild.channels.create({
+      if (cat.root) {
+        // Kanały bez kategorii (np. z kopii zapasowej) – tworzymy je bezpośrednio na serwerze.
+        tick('Kanały bez kategorii');
+        for (const ch of cat.channels) {
+          const channel = await createChannel(ch, undefined);
+          if (channel) {
+            R.channels[ch.key] = channel.id;
+            R.ids.channels.push(channel.id);
+            R.created.channels += 1;
+            R.created.overwrites += resolveOverwrites(ch.overwrites).length;
+          }
+          tick(`#${ch.name}`);
+        }
+        continue;
+      }
+      const category = await attempt(`Kategoria ${cat.name}`, () => createGuildChannel({
         name: cat.name,
         type: ChannelType.GuildCategory,
         permissionOverwrites: resolveOverwrites(cat.overwrites),
@@ -382,7 +413,7 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
           kind = ch.kind === 'stage' ? 'voice' : 'text';
           R.warnings.push(`${ch.kind === 'stage' ? 'Scenę' : 'Forum'} #${ch.name} utworzono jako zwykły kanał (brak trybu Społeczności).`);
         }
-        const channel = await attempt(`Kanał ${ch.name}`, () => guild.channels.create(channelOptions(ch, parentId, KIND_TYPE[kind])));
+        const channel = await attempt(`Kanał ${ch.name}`, () => createGuildChannel(channelOptions(ch, parentId, KIND_TYPE[kind])));
         if (channel) {
           R.channels[ch.key] = channel.id;
           R.ids.channels.push(channel.id);

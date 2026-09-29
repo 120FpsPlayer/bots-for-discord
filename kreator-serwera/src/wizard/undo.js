@@ -122,10 +122,14 @@ async function performUndo(guild, record) {
 }
 
 /** Obsługa przycisków wzu:ask / wzu:yes / wzu:no (bez sesji – sprawdzamy uprawnienia). */
-async function handleUndo(interaction) {
+async function handleUndo(interaction, store) {
   const [, action, guildId] = interaction.customId.split(':');
   if (guildId !== interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
     return interaction.reply({ content: '🔒 Brak uprawnień.', flags: MessageFlags.Ephemeral });
+  }
+  const busy = store?.lockedBy(guildId);
+  if (busy && action === 'yes') {
+    return interaction.reply({ content: `⏳ Na serwerze trwa teraz: **${busy}**. Spróbuj cofnąć za chwilę.`, flags: MessageFlags.Ephemeral });
   }
   const record = get(guildId);
   if (!record) {
@@ -164,7 +168,13 @@ async function handleUndo(interaction) {
     records.delete(guildId);
     const started = Date.now();
     await interaction.update({ embeds: [embed({ title: '↩️ Cofam budowę…', description: 'To może chwilę potrwać – usuwam kanały i role.', color: COLORS.build })], components: [] });
-    const result = await performUndo(interaction.guild, record);
+    store?.lock(guildId, 'cofanie budowy');
+    let result;
+    try {
+      result = await performUndo(interaction.guild, record);
+    } finally {
+      store?.unlock(guildId);
+    }
     log.info(`Cofnięto budowę na ${interaction.guild.name}: ${JSON.stringify(result.deleted)}`);
     const frame = {
       embeds: [embed({

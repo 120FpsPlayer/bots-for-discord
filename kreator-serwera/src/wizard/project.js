@@ -8,6 +8,7 @@ const { MEMBER_TOGGLES, VIEW_OPTIONS, WRITE_OPTIONS } = require('../builder/perm
 const { CONTENT_OPTIONS, RULE_SECTIONS, PUNISHMENT_STYLES } = require('../builder/content');
 const { STAFF_ROLES, ROLE_GROUP_OPTIONS } = require('../data/roles');
 const { SIZES, AGES, LANGUAGES, createAnswers, computeDependentDefaults } = require('./defaults');
+const { isBackup, sanitizeBackup } = require('../cleanup/snapshot');
 
 /**
  * Wczytywanie projektu z pliku JSON (eksport z podsumowania kreatora).
@@ -16,7 +17,7 @@ const { SIZES, AGES, LANGUAGES, createAnswers, computeDependentDefaults } = requ
  * Tryb czyszczenia NIGDY nie jest wczytywany z pliku (zawsze „dodaj”).
  */
 
-const MAX_BYTES = 512 * 1024;
+const MAX_BYTES = 2 * 1024 * 1024;
 
 const str = (v, max) => (typeof v === 'string' ? v.slice(0, max) : '');
 const bool = (v, fallback) => (typeof v === 'boolean' ? v : fallback);
@@ -149,24 +150,33 @@ function sanitizeAnswers(raw) {
   return a;
 }
 
-/** Pobiera i wczytuje załącznik z /stworz projekt:<plik>. */
+/**
+ * Pobiera i wczytuje załącznik z /stworz projekt:<plik>.
+ * Zwraca { kind: 'project', answers } albo { kind: 'backup', blueprint, guildName, createdAt }
+ * (kopia zapasowa z komendy /usun).
+ */
 async function loadProjectAttachment(attachment) {
   if (!attachment) return null;
-  if (attachment.size > MAX_BYTES) throw new Error('Plik jest za duży (maks. 512 KB).');
+  if (attachment.size > MAX_BYTES) throw new Error('Plik jest za duży (maks. 2 MB).');
   if (!/\.json$/i.test(attachment.name || '') && !String(attachment.contentType || '').includes('json')) {
-    throw new Error('To nie jest plik .json – użyj pliku z przycisku „Zapisz projekt” w podsumowaniu kreatora.');
+    throw new Error('To nie jest plik .json – użyj pliku z przycisku „Zapisz projekt” w podsumowaniu kreatora albo kopii zapasowej z /usun.');
   }
   const res = await fetch(attachment.url);
   if (!res.ok) throw new Error(`Nie udało się pobrać pliku (HTTP ${res.status}).`);
   const text = await res.text();
-  if (text.length > MAX_BYTES) throw new Error('Plik jest za duży (maks. 512 KB).');
+  if (text.length > MAX_BYTES) throw new Error('Plik jest za duży (maks. 2 MB).');
   let json;
   try {
     json = JSON.parse(text);
   } catch {
     throw new Error('Plik nie jest poprawnym JSON-em.');
   }
-  return sanitizeAnswers(json);
+  return parseProjectFile(json);
 }
 
-module.exports = { sanitizeAnswers, loadProjectAttachment, MAX_BYTES };
+function parseProjectFile(json) {
+  if (isBackup(json)) return { kind: 'backup', ...sanitizeBackup(json) };
+  return { kind: 'project', answers: sanitizeAnswers(json) };
+}
+
+module.exports = { sanitizeAnswers, loadProjectAttachment, parseProjectFile, MAX_BYTES };

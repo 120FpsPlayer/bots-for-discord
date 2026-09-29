@@ -24,8 +24,8 @@ function validateModal(modal) {
   return json;
 }
 
-function createInteraction({ guild, userId = '1', customId, values, fields = {}, kind = 'component', permissions = PermissionsBitField.All, channelId = 'origin' }) {
-  const state = { replies: [], updates: [], modals: [], edits: [] };
+function createInteraction({ guild, userId = '1', customId, values, fields = {}, kind = 'component', permissions = PermissionsBitField.All, channelId = 'origin', commandName = 'stworz', attachment = null }) {
+  const state = { replies: [], updates: [], modals: [], edits: [], dms: [] };
   const record = (bucket) => async (payload) => {
     if (payload.embeds || payload.components) validateMessage(payload);
     state[bucket].push(payload);
@@ -35,16 +35,18 @@ function createInteraction({ guild, userId = '1', customId, values, fields = {},
     state,
     customId,
     values,
-    commandName: kind === 'command' ? 'stworz' : undefined,
+    commandName: kind === 'command' ? commandName : undefined,
+    options: { getAttachment: () => attachment },
     guild,
     guildId: guild.id,
     channelId,
     channel: { id: channelId, isThread: () => false },
-    user: { id: userId, tag: `user#${userId}`, username: `user${userId}`, send: async () => {} },
+    user: { id: userId, tag: `user#${userId}`, username: `user${userId}`, send: async (payload) => { state.dms.push(payload); } },
     member: { id: userId, permissions: new PermissionsBitField(permissions), roles: { cache: new Map() } },
     memberPermissions: new PermissionsBitField(permissions),
     replied: false,
     deferred: false,
+    isChatInputCommand: () => kind === 'command',
     isModalSubmit: () => kind === 'modal',
     isFromMessage: () => kind === 'modal',
     isButton: () => kind === 'component' && values === undefined,
@@ -59,6 +61,8 @@ function createInteraction({ guild, userId = '1', customId, values, fields = {},
     reply: record('replies'),
     update: record('updates'),
     editReply: record('edits'),
+    deferReply: async () => { interaction.deferred = true; },
+    deferUpdate: async () => { interaction.deferred = true; },
     followUp: record('replies'),
     showModal: async (modal) => {
       state.modals.push(validateModal(modal));

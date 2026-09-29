@@ -12,6 +12,7 @@ class SessionStore {
   constructor({ timeoutMinutes = 30 } = {}) {
     this.timeoutMs = timeoutMinutes * 60_000;
     this.sessions = new Map();
+    this.locks = new Map();
     this.sweeper = setInterval(() => this.sweep(), 60_000);
     this.sweeper.unref?.();
   }
@@ -68,6 +69,23 @@ class SessionStore {
 
   get size() {
     return this.sessions.size;
+  }
+
+  /**
+   * Blokada serwera na czas długiej operacji (budowa, czyszczenie, przywracanie),
+   * żeby /stworz i /usun nie działały jednocześnie na tym samym serwerze.
+   */
+  lock(guildId, reason) {
+    this.locks.set(guildId, { reason, at: Date.now() });
+  }
+
+  unlock(guildId) {
+    this.locks.delete(guildId);
+  }
+
+  lockedBy(guildId) {
+    if (this.get(guildId)?.building) return 'budowa serwera';
+    return this.locks.get(guildId)?.reason ?? null;
   }
 }
 
