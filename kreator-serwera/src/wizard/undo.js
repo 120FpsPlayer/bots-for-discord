@@ -18,7 +18,16 @@ const records = new Map();
 
 /** ticket – zużyte użycie kodu dostępu; cofnięcie budowy je oddaje. */
 function remember(guildId, result, { userId, wipe, ticket = null }) {
-  records.set(guildId, { ids: result.ids, previous: result.previous, userId, wipe, ticket, at: Date.now() });
+  records.set(guildId, {
+    ids: result.ids,
+    previous: result.previous,
+    onboarding: Boolean(result.created?.onboarding),
+    icon: Boolean(result.created?.icon),
+    userId,
+    wipe,
+    ticket,
+    at: Date.now(),
+  });
 }
 
 function get(guildId) {
@@ -36,6 +45,7 @@ function counts(record) {
     roles: record.ids.roles.length,
     channels: record.ids.channels.length + record.ids.categories.length,
     automod: record.ids.automod.length,
+    emojis: record.ids.emojis?.length || 0,
   };
 }
 
@@ -48,7 +58,7 @@ function undoButton(guildId) {
 async function performUndo(guild, record) {
   const reason = 'Kreator Serwera – cofnięcie budowy';
   const problems = [];
-  const deleted = { roles: 0, channels: 0, automod: 0 };
+  const deleted = { roles: 0, channels: 0, automod: 0, emojis: 0 };
   const prev = record.previous || {};
   const safe = async (what, fn) => {
     try {
@@ -61,6 +71,11 @@ async function performUndo(guild, record) {
 
   await guild.channels.fetch().catch(() => {});
   await guild.roles.fetch().catch(() => {});
+
+  // 0. Onboarding – wyłączamy najpierw, bo Discord nie pozwala usuwać jego kanałów domyślnych.
+  if (record.onboarding) {
+    await safe('Wyłączanie onboardingu', () => guild.editOnboarding({ enabled: false, prompts: [], defaultChannels: [], mode: 0, reason }));
+  }
 
   // 1. Tryb Społeczności: najpierw oddajemy regulamin/ogłoszenia starym kanałom albo wyłączamy Społeczność,
   //    bo Discord nie pozwala usunąć kanałów, które ją obsługują.
@@ -97,6 +112,16 @@ async function performUndo(guild, record) {
     if (await safe(`Rola „${role.name}”`, () => role.delete(reason)) !== null) deleted.roles += 1;
   }
 
+  // 4b. Emoji z paczki serwera i ikona z inicjałów
+  if (record.ids.emojis?.length) {
+    const emojis = await guild.emojis.fetch().catch(() => guild.emojis.cache);
+    for (const id of record.ids.emojis) {
+      const emoji = emojis?.get(id);
+      if (emoji && await safe(`Emoji :${emoji.name}:`, () => emoji.delete(reason)) !== null) deleted.emojis += 1;
+    }
+  }
+  if (record.icon && !prev.hadIcon) await safe('Ikona serwera', () => guild.setIcon(null, reason));
+
   // 5. Ustawienia serwera sprzed budowy
   const settings = {
     name: prev.name,
@@ -123,7 +148,7 @@ async function performUndo(guild, record) {
 }
 
 /** Obsługa przycisków wzu:ask / wzu:yes / wzu:no (bez sesji – sprawdzamy uprawnienia). */
-async function handleUndo(interaction, store, codes = null) {
+async function handleUndo(interaction, store, codes = null, { leaver = null, notifier = null } = {}) {
   const [, action, guildId] = interaction.customId.split(':');
   if (guildId !== interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
     return interaction.reply({ content: '🔒 Brak uprawnień.', flags: MessageFlags.Ephemeral });
@@ -149,9 +174,11 @@ async function handleUndo(interaction, store, codes = null) {
         description: [
           'Usunę **wszystko, co utworzył kreator**, i przywrócę ustawienia serwera sprzed budowy:',
           `🎭 **${c.roles}** ról • 💬 **${c.channels}** kanałów i kategorii • 🤖 **${c.automod}** reguł AutoMod`,
+          c.emojis ? `😀 **${c.emojis}** emoji z paczki serwera` : null,
+          record.onboarding ? '🧭 onboarding (zostanie wyłączony)' : null,
           '⚙️ nazwa serwera, poziom weryfikacji, filtr multimediów, powiadomienia, uprawnienia @everyone',
-          record.wipe ? '\n⚠️ Budowa była w trybie czyszczenia – **usuniętych wcześniej kanałów i ról nie da się przywrócić**. Serwer zostanie pusty.' : '',
-        ].join('\n'),
+          record.wipe ? '\n⚠️ Budowa była w trybie czyszczenia – **usuniętych wcześniej kanałów i ról nie da się przywrócić**. Serwer zostanie pusty.' : null,
+        ].filter((line) => line !== null).join('\n'),
       })],
       components: [row(
         button(`wzu:yes:${guildId}`, 'Tak, cofnij wszystko', { style: ButtonStyle.Danger, emoji: '↩️' }),
@@ -176,6 +203,8 @@ async function handleUndo(interaction, store, codes = null) {
     } finally {
       store?.unlock(guildId);
     }
+    // Po cofnięciu bot zostaje – ktoś pewnie zbuduje serwer jeszcze raz.
+    if (leaver?.cancel(guildId)) log.info(`Odwołano wyjście bota z ${interaction.guild.name} (budowa cofnięta).`);
     let refunded = false;
     if (record.ticket && codes) {
       try {
@@ -185,13 +214,22 @@ async function handleUndo(interaction, store, codes = null) {
         log.error(err.message);
       }
     }
+    notifier?.send({
+      title: '↩️ Budowa cofnięta',
+      color: 0xfee75c,
+      fields: [
+        { name: 'Serwer', value: `${interaction.guild.name}\n\`${interaction.guild.id}\`` },
+        { name: 'Osoba', value: `<@${interaction.user.id}>\n${interaction.user.tag}` },
+        { name: 'Kod', value: record.ticket ? (refunded ? 'użycie zwrócone' : 'bez zmian') : 'bez kodu' },
+      ],
+    });
     log.info(`Cofnięto budowę na ${interaction.guild.name}: ${JSON.stringify(result.deleted)}`);
     const frame = {
       embeds: [embed({
         title: result.problems.length ? '↩️ Cofnięto (z uwagami)' : '↩️ Budowa cofnięta',
         color: result.problems.length ? COLORS.warning : COLORS.success,
         fields: [
-          field('🧹 Usunięto', `🎭 ${result.deleted.roles} ról\n💬 ${result.deleted.channels} kanałów i kategorii\n🤖 ${result.deleted.automod} reguł AutoMod`, true),
+          field('🧹 Usunięto', `🎭 ${result.deleted.roles} ról\n💬 ${result.deleted.channels} kanałów i kategorii\n🤖 ${result.deleted.automod} reguł AutoMod${result.deleted.emojis ? `\n😀 ${result.deleted.emojis} emoji` : ''}`, true),
           field('⚙️ Ustawienia', result.restored ? 'przywrócone' : 'nie udało się przywrócić', true),
           field('⏱️ Czas', formatDuration((Date.now() - started) / 1000), true),
           ...(result.problems.length ? [field(`📝 Uwagi (${result.problems.length})`, result.problems.slice(0, 10).map((p) => `⚠️ ${p}`).join('\n'))] : []),
@@ -207,4 +245,4 @@ async function handleUndo(interaction, store, codes = null) {
   return undefined;
 }
 
-module.exports = { remember, get, undoButton, performUndo, handleUndo };
+module.exports = { remember, get, undoButton, performUndo, handleUndo, TTL_MS };

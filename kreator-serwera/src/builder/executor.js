@@ -6,6 +6,8 @@ const {
 } = require('discord.js');
 const { toBits } = require('./permissions');
 const { renderContent } = require('./content');
+const gfx = require('../graphics/engine');
+const art = require('../graphics/art');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('budowa');
@@ -23,6 +25,22 @@ class BuildAborted extends Error {
     this.name = 'BuildAborted';
   }
 }
+
+/** Nazwa webhooka nie może zawierać „discord” ani „clyde” (1–80 znaków). */
+function webhookName(name) {
+  const clean = String(name || '').replace(/discord|clyde/gi, '').replace(/\s+/g, ' ').trim().slice(0, 80);
+  return clean.length >= 1 ? clean : 'Serwer';
+}
+
+/** ID w formacie Discorda (snowflake) – onboarding wymaga ich dla nowych pytań i odpowiedzi. */
+let snowflakeSeq = 0;
+function snowflake() {
+  snowflakeSeq = (snowflakeSeq + 1) % 4096;
+  return String((BigInt(Date.now() - 1420070400000) << 22n) | BigInt(snowflakeSeq));
+}
+
+/** Limit statycznych emoji serwera zależnie od poziomu boostów. */
+const EMOJI_LIMIT = { 0: 50, 1: 100, 2: 150, 3: 250 };
 
 const KIND_TYPE = {
   text: ChannelType.GuildText,
@@ -82,9 +100,11 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
   const R = {
     roles: {},
     channels: {},
-    created: { roles: 0, categories: 0, channels: 0, messages: 0, automod: 0, overwrites: 0 },
+    created: { roles: 0, categories: 0, channels: 0, messages: 0, automod: 0, overwrites: 0, emojis: 0, banners: 0, icon: false, onboarding: 0 },
     deleted: { channels: 0, roles: 0, automod: 0 },
-    ids: { roles: [], categories: [], channels: [], automod: [] },
+    ids: { roles: [], categories: [], channels: [], automod: [], emojis: [] },
+    emojis: [],
+    sender: 'bot',
     warnings: [...bp.warnings],
     errors: [],
     phases: [],
@@ -140,6 +160,7 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
       rulesChannelId: guild.rulesChannelId ?? null,
       publicUpdatesChannelId: guild.publicUpdatesChannelId ?? null,
       everyonePermissions: String(guild.roles.everyone?.permissions?.bitfield ?? 0n),
+      hadIcon: Boolean(guild.icon),
       community: communityOn,
     };
     const wantCommunity = Boolean(bp.guild.community);
@@ -152,12 +173,22 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
 
     const channelCount = bp.categories.reduce((n, c) => n + c.channels.length, 0);
     total = channelsToDelete.length + rolesToDelete.length + rulesToDelete.length
-      + bp.roles.length + 1 + bp.categories.length + channelCount + 3 + bp.messages.length + bp.automod.length + 3;
+      + bp.roles.length + 1 + bp.categories.length + channelCount + 3 + bp.messages.length + bp.automod.length + 3
+      + (bp.meta.graphics?.emojiPack ? 18 : 0) + (bp.onboarding ? 1 : 0);
+    const graphics = bp.meta.graphics || {};
+    const canDraw = (graphics.banners || graphics.icon || graphics.emojiPack) && gfx.available();
+    if ((graphics.banners || graphics.icon || graphics.emojiPack) && !canDraw) {
+      R.warnings.push(`Grafiki pominięte – biblioteka graficzna nie działa na tym hostingu (${gfx.unavailableReason() || 'brak'}).`);
+    }
 
     // ───────────── Czyszczenie ─────────────
     const deferredDeletes = [];
     if (wipe) {
       startPhase('Czyszczenie serwera');
+      if (communityOn && guild.fetchOnboarding) {
+        const onboarding = await guild.fetchOnboarding().catch(() => null);
+        if (onboarding?.enabled) await attempt('Wyłączanie onboardingu', () => guild.editOnboarding({ enabled: false, prompts: [], defaultChannels: [], mode: 0, reason }), { warn: true });
+      }
       for (const rule of rulesToDelete) {
         const ok = await attempt(`Usuwanie reguły AutoMod „${rule.name}”`, () => rule.delete(reason), { warn: true });
         if (ok !== null) R.deleted.automod += 1;
@@ -367,7 +398,14 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
       settings.afkTimeout = bp.guild.afkTimeout;
     }
     await attempt('Ustawienia serwera', () => guild.edit(settings));
-    if (bp.guild.iconUrl) await attempt('Ikona serwera', () => guild.setIcon(bp.guild.iconUrl, reason), { warn: true });
+    // Ikona: logo kupującego albo (gdy go nie ma, a serwer nie ma ikony) ikona z inicjałów nazwy.
+    let iconBuffer = null;
+    if (bp.guild.iconUrl) {
+      await attempt('Ikona serwera', () => guild.setIcon(bp.guild.iconUrl, reason), { warn: true });
+    } else if (graphics.icon && canDraw && !R.previous.hadIcon) {
+      iconBuffer = await attempt('Ikona z inicjałów', () => art.renderIcon({ name: bp.guild.name || guild.name, color: bp.meta.embedColor, emoji: bp.meta.typeEmoji }), { warn: true });
+      if (iconBuffer && await attempt('Ikona serwera', () => guild.setIcon(iconBuffer, reason), { warn: true }) !== null) R.created.icon = true;
+    }
     tick('Nazwa, bezpieczeństwo, kanał systemowy');
 
     // ───────────── Tryb Społeczności ─────────────
@@ -443,6 +481,57 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
     }
     tick('Ekran powitalny');
 
+    // ───────────── Onboarding (pytania Discorda przy wejściu – nadaje role bez bota) ─────────────
+    if (bp.onboarding) {
+      if (!communityOn) {
+        R.warnings.push('Onboarding pominięty – tryb Społeczności nie został włączony.');
+      } else {
+        const prompts = bp.onboarding.prompts.map((p) => ({
+          id: snowflake(),
+          title: p.title,
+          singleSelect: p.single,
+          required: p.required,
+          inOnboarding: true,
+          type: p.dropdown ? 1 : 0,
+          options: p.options.map((o) => ({
+            id: snowflake(),
+            title: o.title,
+            description: o.description || null,
+            emoji: o.emoji || undefined,
+            roles: o.roles.map((k) => R.roles[k]).filter(Boolean),
+            channels: o.channels.map((k) => R.channels[k]).filter(Boolean),
+          })).filter((o) => o.roles.length || o.channels.length),
+        })).filter((p) => p.options.length);
+        const defaultChannels = bp.onboarding.defaultChannels.map((k) => R.channels[k]).filter(Boolean);
+        const ok = await attempt('Onboarding', () => guild.editOnboarding({ prompts, defaultChannels, enabled: true, mode: 0, reason }), { warn: true });
+        if (ok !== null) R.created.onboarding = prompts.length;
+      }
+      tick('Onboarding');
+    }
+
+    // ───────────── Paczka emoji serwera ─────────────
+    if (graphics.emojiPack && canDraw) {
+      startPhase('Paczka emoji');
+      const pack = await attempt('Paczka emoji', () => art.renderEmojiPack({ type: bp.meta.type, color: bp.meta.embedColor }), { warn: true }) || [];
+      const existing = await guild.emojis.fetch().catch(() => guild.emojis.cache);
+      let free = (EMOJI_LIMIT[guild.premiumTier ?? 0] ?? 50) - [...existing.values()].filter((e) => !e.animated).length;
+      const taken = new Set([...existing.values()].map((e) => e.name));
+      let skipped = 0;
+      for (const e of pack) {
+        if (taken.has(e.name)) { tick(); continue; }
+        if (free <= 0) { skipped += 1; tick(); continue; }
+        const emoji = await attempt(`Emoji :${e.name}:`, () => guild.emojis.create({ attachment: e.buffer, name: e.name, reason }), { warn: true });
+        if (emoji) {
+          R.created.emojis += 1;
+          R.ids.emojis.push(emoji.id);
+          R.emojis.push(`<:${emoji.name}:${emoji.id}>`);
+          free -= 1;
+        }
+        tick(`:${e.name}:`);
+      }
+      if (skipped) R.warnings.push(`Paczka emoji: brak miejsca na ${skipped} emoji (limit serwera). Zwolnij miejsce albo zboostuj serwer.`);
+    }
+
     // ───────────── Wiadomości i panele ─────────────
     startPhase('Publikowanie wiadomości');
     const ctx = {
@@ -457,29 +546,84 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
       roleId: (key) => R.roles[key] || null,
       channelId: (key) => R.channels[key] || null,
     };
+    // Nadawca: webhook z nazwą i ikoną serwera (wiadomości wyglądają jak od serwera, a nie od bota)
+    // albo sam bot. Webhooki usuwamy po publikacji – wiadomości zostają z nazwą i ikoną serwera.
+    const displayName = bp.guild.name || guild.name;
+    const avatar = iconBuffer || bp.guild.iconUrl || guild.iconURL?.({ extension: 'png', size: 256 }) || null;
+    const hooks = new Map();
+    let hooksBroken = bp.meta.sender !== 'server';
+    const hookFor = async (channel) => {
+      if (hooksBroken) return null;
+      if (hooks.has(channel.id)) return hooks.get(channel.id);
+      let hook = null;
+      try {
+        hook = await channel.createWebhook({ name: webhookName(displayName), avatar, reason });
+      } catch (err) {
+        hooksBroken = true;
+        R.warnings.push(`Wiadomości wysłano jako bot – nie udało się utworzyć webhooka (${describeError(err)}).`);
+      }
+      hooks.set(channel.id, hook);
+      return hook;
+    };
+    const post = async (channel, body, threadName) => {
+      const hook = await hookFor(channel);
+      if (channel.type === ChannelType.GuildForum) {
+        if (hook) {
+          const msg = await hook.send({ ...body, threadName });
+          const thread = await guild.channels.fetch(msg.channelId).catch(() => null);
+          await thread?.pin?.(reason).catch(() => {});
+          return msg;
+        }
+        const thread = await channel.threads.create({ name: threadName, message: body, reason });
+        await thread.pin(reason).catch(() => {});
+        return thread;
+      }
+      return hook ? hook.send(body) : channel.send(body);
+    };
+
+    const banners = new Map();
+    const bannerOf = async (kind) => {
+      if (!graphics.banners || !canDraw) return null;
+      const spec = art.bannerFor(kind, bp.meta.language);
+      if (!spec) return null;
+      if (!banners.has(kind)) {
+        const buffer = await attempt(`Baner ${spec.title}`, () => art.renderBanner({ ...spec, subtitle: displayName, color: bp.meta.embedColor }), { warn: true });
+        banners.set(kind, buffer ? { attachment: buffer, name: `baner-${kind.replace(/[^\w-]/g, '')}.png` } : null);
+      }
+      return banners.get(kind);
+    };
+
     for (const message of bp.messages) {
       const channel = guild.channels.cache.get(R.channels[message.channel]);
       if (channel) {
         const payloads = renderContent(message.kind, ctx);
-        for (const payload of payloads) {
+        const forum = channel.type === ChannelType.GuildForum;
+        const banner = await bannerOf(message.kind);
+        // Baner nad treścią: w kanale tekstowym osobna wiadomość z obrazkiem, na forum – w pierwszym poście.
+        if (banner && !forum) {
+          const ok = await attempt(`Baner w #${channel.name}`, () => post(channel, { files: [banner], allowedMentions: { parse: [] } }), { warn: true });
+          if (ok) R.created.banners += 1;
+        }
+        for (const [i, payload] of payloads.entries()) {
           const body = { embeds: payload.embeds, components: payload.components || [], allowedMentions: payload.allowedMentions || { parse: [] } };
           if (payload.content) body.content = payload.content;
+          if (banner && forum && i === 0) body.files = [banner];
           const sent = await attempt(`Wiadomość w #${channel.name}`, async () => {
-            if (channel.type === ChannelType.GuildForum) {
-              const title = payload.thread || payload.embeds?.[0]?.data?.title || 'Informacje';
-              const thread = await channel.threads.create({ name: title.slice(0, 100), message: body, reason });
-              await thread.pin(reason).catch(() => {});
-              return thread;
-            }
-            const msg = await channel.send(body);
-            if (payload.thread) await msg.startThread({ name: payload.thread.slice(0, 100), reason }).catch(() => {});
+            const title = (payload.thread || payload.embeds?.[0]?.data?.title || 'Informacje').slice(0, 100);
+            const msg = await post(channel, body, title);
+            if (!forum && payload.thread) await msg?.startThread?.({ name: payload.thread.slice(0, 100), reason }).catch(() => {});
             return msg;
           });
-          if (sent) R.created.messages += 1;
+          if (sent) {
+            R.created.messages += 1;
+            if (banner && forum && i === 0) R.created.banners += 1;
+          }
         }
       }
       tick(`Wiadomość: ${message.kind}`);
     }
+    R.sender = [...hooks.values()].some(Boolean) ? 'server' : 'bot';
+    for (const hook of hooks.values()) if (hook) await hook.delete(reason).catch(() => {});
 
     // ───────────── AutoMod ─────────────
     startPhase('Konfiguracja AutoMod');

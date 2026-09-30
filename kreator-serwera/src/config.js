@@ -56,7 +56,14 @@ const config = {
   requireCode: !/^(0|false|nie|no|off)$/i.test((process.env.REQUIRE_CODE || '').trim()),
   /** Plik z kodami dostępu (względem folderu bota). Nie usuwaj go przy aktualizacji bota! */
   codesFile: path.resolve(PROJECT_DIR, (process.env.CODES_FILE || '').trim() || path.join('data', 'kody.json')),
+  /** ID sprzedawców (Discord) – bez kodów, pakiet bez ograniczeń, zapis szablonów. Puste = właściciel aplikacji bota. */
+  sellerIds: (process.env.SELLER_IDS || '').split(/[\s,;]+/).filter((id) => /^\d{17,20}$/.test(id)),
+  /** Powiadomienia dla sprzedawcy: webhook kanału na Twoim Discordzie albo ID kanału (bot musi tam być). */
+  notifyWebhookUrl: (process.env.NOTIFY_WEBHOOK_URL || '').trim(),
+  notifyChannelId: (process.env.NOTIFY_CHANNEL_ID || '').trim(),
 };
+/** Folder na dane bota (kody, szablony, zaplanowane wyjścia) – obok pliku kodów. */
+config.dataDir = path.dirname(config.codesFile);
 
 function validateConfig() {
   const problems = [];

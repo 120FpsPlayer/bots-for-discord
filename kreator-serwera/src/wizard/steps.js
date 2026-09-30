@@ -15,8 +15,14 @@ const N = require('../builder/naming');
 const { tr } = require('../utils/i18n');
 const { SIZES, AGES, LANGUAGES, applyDefaults, markTouched } = require('./defaults');
 const {
-  cid, selectRow, button, row, modal, modalText, modalSelect, field, clip, yesNo, ButtonStyle,
+  cid, selectRow, button, row, modal, modalText, modalSelect, modalFiles, field, clip, yesNo, ButtonStyle,
 } = require('./ui');
+const {
+  onboardingStep, botsStep, graphicsStep, LEAVE_OPTIONS,
+} = require('./stepsExtra');
+
+const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+const LOGO_MAX_BYTES = 10 * 1024 * 1024;
 
 /**
  * Kroki kreatora. Każdy krok:
@@ -100,12 +106,15 @@ const basicsStep = {
       fields: [
         field('🏷️ Nazwa serwera', b.name ? `**${b.name}**` : '*nie podano – zostanie obecna*', true),
         field('✏️ Zmienić nazwę serwera?', yesNo(b.rename), true),
-        field('🖼️ Ikona', b.iconUrl ? `[link](${b.iconUrl})` : '*bez zmian*', true),
+        field('🖼️ Logo / ikona', b.iconUrl ? (b.iconName ? `📎 ${clip(b.iconName, 60)}` : `[link](${b.iconUrl})`) : '*bez zmian (albo ikona z inicjałów – krok „Grafika”)*', true),
         field('📄 Opis i cel serwera', b.description || '*nie podano – użyjemy domyślnego powitania*'),
         field('🎯 Dla kogo jest serwer?', b.audience || '*nie podano*'),
       ],
       rows: [
-        row(button(cid(s, 'b', 'edit'), 'Uzupełnij nazwę, opis i ikonę', { style: ButtonStyle.Primary, emoji: '✏️' })),
+        row(
+          button(cid(s, 'b', 'edit'), 'Uzupełnij nazwę, opis i logo', { style: ButtonStyle.Primary, emoji: '✏️' }),
+          b.iconUrl ? button(cid(s, 'b', 'nologo'), 'Usuń logo', { emoji: '🗑️' }) : null,
+        ),
         selectRow(cid(s, 's', 'rename'), {
           placeholder: 'Czy zmienić nazwę serwera?',
           options: [
@@ -127,9 +136,14 @@ const basicsStep = {
           { id: 'name', label: 'Nazwa serwera', style: 'short', value: b.name, required: true, min: 1, max: 100, placeholder: 'np. Kraina Graczy' },
           { id: 'description', label: 'Opis i cel serwera', description: 'Co to za miejsce i po co powstało? (pojawi się w #informacje)', style: 'paragraph', value: b.description, max: 1000, placeholder: 'np. Polska społeczność fanów gier FPS. Organizujemy turnieje, wspólne granie i…' },
           { id: 'audience', label: 'Dla kogo jest serwer?', style: 'short', value: b.audience, max: 150, placeholder: 'np. gracze 16+, uczniowie klasy 3B, klienci sklepu' },
-          { id: 'icon', label: 'Link do ikony (opcjonalnie)', description: 'Bezpośredni link do obrazka PNG/JPG/GIF', style: 'short', value: b.iconUrl, max: 400, placeholder: 'https://…/ikona.png' },
+          { id: 'icon', label: 'Link do logo (opcjonalnie)', description: 'Bezpośredni link do obrazka PNG/JPG/GIF – albo wgraj plik poniżej', style: 'short', value: b.iconName ? '' : b.iconUrl, max: 400, placeholder: 'https://…/logo.png' },
+          { id: 'logo', label: 'Logo serwera (plik, opcjonalnie)', description: 'PNG, JPG, GIF lub WEBP do 10 MB – zostanie ikoną serwera', upload: { min: 0, max: 1 } },
         ]),
       };
+    },
+    nologo(s) {
+      s.answers.basics.iconUrl = '';
+      s.answers.basics.iconName = '';
     },
   },
   modal: {
@@ -138,12 +152,24 @@ const basicsStep = {
       b.name = N.cleanName(modalText(i, 'name'), 100) || b.name;
       b.description = modalText(i, 'description').slice(0, 1000);
       b.audience = N.cleanName(modalText(i, 'audience'), 150);
+      const [logo] = modalFiles(i, 'logo');
       const icon = modalText(i, 'icon');
-      if (icon && !N.isValidUrl(icon)) {
-        s.flash = '⚠️ Link do ikony jest niepoprawny – musi zaczynać się od https://. Ikona nie zostanie zmieniona.';
-        b.iconUrl = '';
-      } else {
+      if (logo) {
+        if (!LOGO_TYPES.includes(String(logo.contentType || '').split(';')[0])) {
+          s.flash = '⚠️ Logo musi być obrazkiem PNG, JPG, GIF lub WEBP – plik pominięto.';
+        } else if (logo.size > LOGO_MAX_BYTES) {
+          s.flash = '⚠️ Logo jest za duże (maks. 10 MB) – plik pominięto.';
+        } else {
+          b.iconUrl = logo.url;
+          b.iconName = logo.name || 'logo';
+        }
+      } else if (icon && !N.isValidUrl(icon)) {
+        s.flash = '⚠️ Link do logo jest niepoprawny – musi zaczynać się od https://. Logo nie zostanie zmienione.';
+      } else if (icon) {
         b.iconUrl = icon;
+        b.iconName = '';
+      } else if (!b.iconName) {
+        b.iconUrl = '';
       }
     },
   },
@@ -1158,6 +1184,8 @@ const modeStep = {
       fields: [
         field('🏗️ Tryb', m.type === 'wipe' ? '🧨 **Wyczyść i zbuduj od nowa**' : '➕ **Dodaj do obecnej struktury**', true),
         field('👑 Nadaj mi rolę', yesNo(m.assign), true),
+        field('🚪 Bot po budowie', `${LEAVE_OPTIONS[m.leave || 'no'].emoji} ${LEAVE_OPTIONS[m.leave || 'no'].label}`, true),
+        field('📘 Przewodnik', m.guide !== false ? 'wyślę Ci w DM (i na kanał ekipy): co ustawić dalej, linki do botów' : 'bez przewodnika', true),
         m.type === 'wipe'
           ? field('⚠️ Uwaga – tryb czyszczenia', `Zostaną **nieodwracalnie usunięte**: wszystkie kanały i kategorie (${s.env.existingChannels ?? '?'}), role poniżej roli bota (${Math.max(0, (s.env.existingRoles ?? 1) - 1)}) oraz reguły AutoMod.\nZachowane zostaną: członkowie, emoji, naklejki, bany, role botów oraz kanał, z którego uruchomiono kreator (usuniesz go jednym kliknięciem na końcu).\nPrzed startem trzeba będzie wpisać nazwę serwera.`)
           : field('ℹ️ Tryb dodawania', 'Istniejące kanały i role zostaną nietknięte – nowa struktura pojawi się pod nimi.'),
@@ -1178,6 +1206,17 @@ const modeStep = {
             { value: 'no', label: 'Nie – nadam role samodzielnie', emoji: '🙅', default: !m.assign },
           ],
         }),
+        selectRow(cid(s, 's', 'leave'), {
+          placeholder: 'Co bot ma zrobić po budowie?',
+          options: Object.entries(LEAVE_OPTIONS).map(([value, d]) => ({ value, label: d.label, description: d.description, emoji: d.emoji, default: (m.leave || 'no') === value })),
+        }),
+        selectRow(cid(s, 's', 'guide'), {
+          placeholder: 'Wysłać przewodnik po budowie?',
+          options: [
+            { value: 'yes', label: 'Tak – wyślij przewodnik', description: 'Co ustawić dalej, linki do wybranych botów, podgląd serwera', emoji: '📘', default: m.guide !== false },
+            { value: 'no', label: 'Nie – bez przewodnika', emoji: '🙅', default: m.guide === false },
+          ],
+        }),
       ],
     };
   },
@@ -1191,12 +1230,14 @@ const modeStep = {
       s.answers.mode.type = v === 'wipe' ? 'wipe' : 'append';
     },
     assign(s, [v]) { s.answers.mode.assign = v === 'yes'; },
+    leave(s, [v]) { s.answers.mode.leave = LEAVE_OPTIONS[v] ? v : 'no'; },
+    guide(s, [v]) { s.answers.mode.guide = v !== 'no'; },
   },
 };
 
 const STEPS = [
-  typeStep, basicsStep, profileStep, styleStep, modulesStep, specialStep, staffStep, rolesStep,
-  permissionsStep, accessStep, securityStep, channelsStep, customStep, contentStep, textsStep, modeStep,
+  typeStep, basicsStep, profileStep, styleStep, modulesStep, specialStep, staffStep, rolesStep, onboardingStep,
+  permissionsStep, accessStep, securityStep, channelsStep, customStep, botsStep, contentStep, graphicsStep, textsStep, modeStep,
 ];
 
 const STEP_INDEX = Object.fromEntries(STEPS.map((step, i) => [step.id, i]));

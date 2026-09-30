@@ -52,7 +52,7 @@ test('kody: przypisanie do serwera, zużycie przy budowie, zwrot, anulowanie, do
 
   const ok = codes.redeem(formatCode(r.code).toLowerCase(), { guildId: 'g1', guildName: 'Serwer', userId: 'u1' });
   assert.equal(ok.ok, true);
-  assert.deepEqual(codes.grantFor('g1'), { code: r.code, remaining: 1, uses: 1, note: 'Zamówienie #7' });
+  assert.deepEqual(codes.grantFor('g1'), { code: r.code, remaining: 1, uses: 1, note: 'Zamówienie #7', package: null, template: null, expiresAt: null });
 
   const ticket = codes.consume('g1', { guildName: 'Serwer', userId: 'u1' });
   assert.equal(ticket.ok, true);

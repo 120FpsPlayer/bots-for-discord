@@ -12,8 +12,13 @@ const { createWizard } = require('./wizard/router');
 const { runBuild, handleOriginDelete } = require('./wizard/build');
 const { handleUndo } = require('./wizard/undo');
 const { createCleanupPanel } = require('./cleanup/panel');
+const path = require('node:path');
 const { CodeStore, CodeStoreError } = require('./access/codes');
 const { startConsole } = require('./access/console');
+const { TemplateStore } = require('./access/templates');
+const { Notifier } = require('./access/notify');
+const { LeaveScheduler } = require('./wizard/leave');
+const gfx = require('./graphics/engine');
 
 const log = createLogger('bot');
 
@@ -28,7 +33,18 @@ if (problems.length) {
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const store = new SessionStore({ timeoutMinutes: config.sessionTimeoutMinutes });
 const codes = new CodeStore({ file: config.codesFile });
-const wizard = createWizard({ store, config, runBuild, codes });
+const templates = new TemplateStore({ dir: path.join(config.dataDir, 'szablony') });
+const notifier = new Notifier({ webhookUrl: config.notifyWebhookUrl, channelId: config.notifyChannelId, client });
+const leaver = new LeaveScheduler({
+  file: path.join(config.dataDir, 'wyjscia.json'),
+  client,
+  store,
+  onLeave: (guild) => notifier.send({ title: '🚪 Bot opuścił serwer', color: 0x99aab5, fields: [{ name: 'Serwer', value: `${guild.name}\n\`${guild.id}\`` }] }),
+});
+/** Sprzedawcy: SELLER_IDS z .env, a gdy puste – właściciel aplikacji (lub członkowie zespołu) z Developer Portal. */
+const sellers = new Set(config.sellerIds);
+const isSeller = (userId) => sellers.has(userId);
+const wizard = createWizard({ store, config, runBuild, codes, templates, notifier, leaver, isSeller });
 const cleanup = createCleanupPanel({ store });
 const COMMANDS = [stworzCommand, usunCommand].map((c) => c.toJSON());
 
@@ -48,6 +64,21 @@ client.once(Events.ClientReady, async (c) => {
   } catch (err) {
     log.error('Nie udało się zarejestrować komend:', err);
   }
+
+  if (!sellers.size) {
+    try {
+      const app = await c.application.fetch();
+      const owner = app.owner;
+      if (owner?.members) for (const id of owner.members.keys()) sellers.add(id);
+      else if (owner?.id) sellers.add(owner.id);
+    } catch (err) {
+      log.warn(`Nie udało się ustalić właściciela bota (${err.message}) – ustaw SELLER_IDS w .env.`);
+    }
+  }
+  log.info(`👤 Sprzedawcy (bez kodów, zapis szablonów): ${[...sellers].join(', ') || 'brak'}`);
+  log.info(`🖼️ Grafika (podgląd, banery, ikony, emoji): ${gfx.available() ? 'działa' : `wyłączona – ${gfx.unavailableReason()}`}`);
+  log.info(`📦 Szablony: ${templates.list().length} • 🔔 Powiadomienia: ${notifier.enabled ? 'włączone' : 'wyłączone (NOTIFY_WEBHOOK_URL / NOTIFY_CHANNEL_ID)'}`);
+  leaver.restore();
 
   if (config.requireCode) {
     try {
@@ -90,7 +121,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (interaction.isButton()) await handleOriginDelete(interaction);
         break;
       case 'wzu':
-        if (interaction.isButton()) await handleUndo(interaction, store, codes);
+        if (interaction.isButton()) await handleUndo(interaction, store, codes, { leaver, notifier });
         break;
       case 'cl':
         await cleanup.handle(interaction);
@@ -137,7 +168,7 @@ function shutdown(signal) {
   client.destroy().finally(() => process.exit(0));
 }
 // Konsola sprzedawcy (Wispbyte: pole „Type a command…” pod konsolą): kod, kody, info, anuluj, pomoc…
-startConsole({ codes, client, store, onStop: () => shutdown('stop') });
+startConsole({ codes, client, store, templates, leaver, onStop: () => shutdown('stop') });
 
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));

@@ -9,6 +9,8 @@ const { CONTENT_OPTIONS, RULE_SECTIONS, PUNISHMENT_STYLES } = require('../builde
 const { STAFF_ROLES, ROLE_GROUP_OPTIONS } = require('../data/roles');
 const { SIZES, AGES, LANGUAGES, createAnswers, computeDependentDefaults } = require('./defaults');
 const { isBackup, sanitizeBackup } = require('../cleanup/snapshot');
+const { BOTS } = require('../data/bots');
+const { ONBOARDING_GROUPS } = require('../builder/blueprint');
 
 /**
  * Wczytywanie projektu z pliku JSON (eksport z podsumowania kreatora).
@@ -126,7 +128,18 @@ function sanitizeAnswers(raw) {
     panels: subset(ct.panels, CONTENT_OPTIONS) ?? a.content.panels,
     community: ['full', 'basic', 'off'].includes(ct.community) ? ct.community : defaults['content.community'],
     embedColor: oneOf(ct.embedColor, EMBED_COLORS, 'palette'),
+    sender: ct.sender === 'bot' ? 'bot' : 'server',
   };
+
+  const ob = src.onboarding || {};
+  a.onboarding = {
+    enabled: bool(ob.enabled, defaults['onboarding.enabled']),
+    groups: subset(ob.groups, ONBOARDING_GROUPS) ?? [],
+    required: bool(ob.required, false),
+  };
+  a.bots = subset(src.bots, BOTS) ?? [];
+  const gfx = src.graphics || {};
+  a.graphics = { banners: bool(gfx.banners, true), icon: bool(gfx.icon, true), emojiPack: bool(gfx.emojiPack, true) };
 
   const tx = src.texts || {};
   const ann = tx.announcement;
@@ -143,7 +156,12 @@ function sanitizeAnswers(raw) {
   };
 
   // Bezpieczeństwo: plik nigdy nie włącza czyszczenia serwera.
-  a.mode = { type: 'append', assign: bool(src.mode?.assign, true) };
+  a.mode = {
+    type: 'append',
+    assign: bool(src.mode?.assign, true),
+    leave: ['no', 'after', 'now'].includes(src.mode?.leave) ? src.mode.leave : 'no',
+    guide: bool(src.mode?.guide, true),
+  };
   // Wczytane wartości traktujemy jak wybrane ręcznie – zmiana rozmiaru ich nie nadpisze.
   a.touched = Object.fromEntries(Object.keys(defaults).map((k) => [k, true]));
   return a;

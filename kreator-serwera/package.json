@@ -1,7 +1,7 @@
 {
   "name": "kreator-serwera",
-  "version": "1.5.0",
-  "description": "Bot Discord do tworzenia serwerów na sprzedaż: /stworz (na kod dostępu z konsoli) buduje cały serwer – role, uprawnienia, kanały, regulamin, AutoMod; /usun czyści serwer z kopią zapasową.",
+  "version": "2.0.0",
+  "description": "Bot Discord do tworzenia serwerów na sprzedaż: /stworz (kody dostępu z pakietami i szablonami) buduje cały serwer – role, uprawnienia, kanały, onboarding, banery, emoji; /usun czyści serwer z kopią zapasową.",
   "main": "index.js",
   "private": true,
   "scripts": {
@@ -21,6 +21,9 @@
   ],
   "license": "MIT",
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.9",
+    "@twemoji/svg": "^15.0.0",
+    "dejavu-fonts-ttf": "^2.37.3",
     "discord.js": "^14.27.0"
   }
 }

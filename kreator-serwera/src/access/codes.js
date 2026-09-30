@@ -74,7 +74,16 @@ class CodeStore {
 
   // ───────────── sprzedawca (konsola) ─────────────
 
-  generate({ count = 1, uses = 1, note = '' } = {}) {
+  /**
+   * @param {object} o
+   * @param {number} [o.count]    ile kodów
+   * @param {number} [o.uses]     ile budów na kod
+   * @param {string} [o.note]     notatka sprzedawcy
+   * @param {string} [o.pkg]      pakiet: basic | standard | premium (brak = premium)
+   * @param {string} [o.template] ID szablonu, który kod otwiera
+   * @param {number} [o.days]     ważność w dniach (brak = bez terminu)
+   */
+  generate({ count = 1, uses = 1, note = '', pkg = null, template = null, days = null } = {}) {
     const n = Math.min(MAX_BATCH, Math.max(1, Math.floor(count)));
     const u = Math.min(MAX_USES, Math.max(1, Math.floor(uses)));
     const data = this.load();
@@ -87,6 +96,9 @@ class CodeStore {
         uses: u,
         used: 0,
         note: String(note || '').trim().slice(0, NOTE_MAX),
+        package: pkg || null,
+        template: template || null,
+        expiresAt: days ? new Date(this.now() + days * 86_400_000).toISOString() : null,
         createdAt: new Date(this.now()).toISOString(),
         revokedAt: null,
         builds: [],
@@ -115,9 +127,14 @@ class CodeStore {
     return { ...r, boundGuilds, status: this.statusOf(r), remaining: Math.max(0, r.uses - r.used) };
   }
 
+  isExpired(r) {
+    return Boolean(r.expiresAt) && Date.parse(r.expiresAt) <= this.now();
+  }
+
   statusOf(r) {
     if (r.revokedAt) return 'anulowany';
     if (r.used >= r.uses) return 'zużyty';
+    if (this.isExpired(r)) return 'wygasły';
     if (r.used > 0) return 'częściowo użyty';
     return 'nowy';
   }
@@ -129,6 +146,16 @@ class CodeStore {
     if (!r) return null;
     r.revokedAt = new Date(this.now()).toISOString();
     for (const [guildId, code] of Object.entries(data.guilds)) if (code === r.code) delete data.guilds[guildId];
+    this.save(data);
+    return r;
+  }
+
+  /** Ustawia ważność kodu: liczba dni od teraz albo null = bez terminu. */
+  setExpiry(input, days) {
+    const data = this.load();
+    const r = data.codes[normalizeCode(input)];
+    if (!r) return null;
+    r.expiresAt = days ? new Date(this.now() + days * 86_400_000).toISOString() : null;
     this.save(data);
     return r;
   }
@@ -150,8 +177,11 @@ class CodeStore {
   grantFor(guildId) {
     const data = this.load();
     const r = data.codes[data.guilds[guildId]];
-    if (!r || r.revokedAt || r.used >= r.uses) return null;
-    return { code: r.code, remaining: r.uses - r.used, uses: r.uses, note: r.note };
+    if (!r || r.revokedAt || r.used >= r.uses || this.isExpired(r)) return null;
+    return {
+      code: r.code, remaining: r.uses - r.used, uses: r.uses, note: r.note,
+      package: r.package || null, template: r.template || null, expiresAt: r.expiresAt || null,
+    };
   }
 
   /** Sprawdza kod wpisany przez kupującego i przypisuje go do serwera. */
@@ -165,10 +195,13 @@ class CodeStore {
     if (!r) return { ok: false, reason: 'unknown', error: 'Nie ma takiego kodu. Sprawdź, czy nie ma literówki.' };
     if (r.revokedAt) return { ok: false, reason: 'revoked', error: 'Ten kod został anulowany przez sprzedawcę.' };
     if (r.used >= r.uses) return { ok: false, reason: 'used', error: 'Ten kod został już wykorzystany.' };
+    if (this.isExpired(r)) {
+      return { ok: false, reason: 'expired', error: `Ten kod wygasł ${new Date(r.expiresAt).toLocaleDateString('pl-PL')}. Poproś sprzedawcę o nowy.` };
+    }
     data.guilds[guildId] = code;
     r.lastRedeem = { guildId, guildName: String(guildName).slice(0, 100), userId, at: new Date(this.now()).toISOString() };
     this.save(data);
-    return { ok: true, code, remaining: r.uses - r.used, uses: r.uses };
+    return { ok: true, code, remaining: r.uses - r.used, uses: r.uses, package: r.package || null, template: r.template || null, note: r.note };
   }
 
   /** Zużywa jedno użycie kodu serwera przy starcie budowy. Zwraca „bilet” potrzebny do ewentualnego zwrotu. */
@@ -178,12 +211,13 @@ class CodeStore {
     const r = data.codes[code];
     if (!r || r.revokedAt) return { ok: false, error: 'Kod dostępu dla tego serwera jest nieaktywny (anulowany lub usunięty). Wpisz /stworz, aby podać nowy kod.' };
     if (r.used >= r.uses) return { ok: false, error: 'Kod dostępu tego serwera został już wykorzystany. Wpisz /stworz, aby podać nowy kod.' };
+    if (this.isExpired(r)) return { ok: false, error: `Kod dostępu tego serwera wygasł ${new Date(r.expiresAt).toLocaleDateString('pl-PL')}. Poproś sprzedawcę o nowy.` };
     const buildId = crypto.randomBytes(4).toString('hex');
     r.used += 1;
-    r.builds.push({ id: buildId, guildId, guildName: String(guildName).slice(0, 100), userId, kind, at: new Date(this.now()).toISOString(), refunded: false });
+    r.builds.push({ id: buildId, guildId, guildName: String(guildName).slice(0, 100), userId, kind, template: r.template || null, at: new Date(this.now()).toISOString(), refunded: false });
     if (r.used >= r.uses) delete data.guilds[guildId];
     this.save(data);
-    return { ok: true, code, buildId, guildId, remaining: r.uses - r.used, uses: r.uses };
+    return { ok: true, code, buildId, guildId, remaining: r.uses - r.used, uses: r.uses, package: r.package || null, template: r.template || null };
   }
 
   /** Oddaje użycie (budowa nieudana albo cofnięta) i z powrotem przypisuje kod do serwera. */

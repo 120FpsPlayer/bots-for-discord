@@ -19,8 +19,11 @@ if (major < 18 || (major === 18 && minor < 17)) {
 }
 
 const root = __dirname;
-if (!fs.existsSync(path.join(root, 'node_modules', 'discord.js', 'package.json'))) {
-  console.log('[i] Brak zainstalowanych zależności – instaluję (tylko za pierwszym razem)...');
+// Sprawdzamy wszystkie zależności z package.json – po aktualizacji bota mogą dojść nowe (np. grafika).
+const deps = Object.keys(JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')).dependencies || {});
+const missing = deps.filter((dep) => !fs.existsSync(path.join(root, 'node_modules', ...dep.split('/'), 'package.json')));
+if (missing.length) {
+  console.log(`[i] Brak zależności (${missing.join(', ')}) – instaluję (tylko raz, może potrwać minutę)...`);
   try {
     execSync('npm install --omit=dev --no-audit --no-fund', { cwd: root, stdio: 'inherit' });
   } catch {

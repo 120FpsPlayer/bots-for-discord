@@ -131,6 +131,8 @@ function computeDependentDefaults(answers) {
     'channels.voiceLayout': SIZE_CHANNELS[size].voiceLayout,
     'channels.afkTimeout': SIZE_CHANNELS[size].afkTimeout,
     'content.community': preset.key === 'friends' || size === 'small' ? 'off' : 'full',
+    // Onboarding Discorda działa tylko ze Społecznością i bez blokady weryfikacji.
+    'onboarding.enabled': !modules.includes('verification') && !(preset.key === 'friends' || size === 'small'),
     'special.items': list ? [...list.defaults] : [],
     'special.options': list ? [...list.options] : [],
     'special.layout': list ? list.layout : 'shared',
@@ -150,7 +152,7 @@ function setPath(obj, path, value) {
 }
 
 /** Pola zależne od typu – resetowane przy zmianie typu serwera. */
-const TYPE_FIELDS = ['modules', 'staffRoles', 'communityRoles', 'special.items', 'special.options', 'special.layout', 'special.extras', 'security.automod', 'content.community'];
+const TYPE_FIELDS = ['modules', 'staffRoles', 'communityRoles', 'special.items', 'special.options', 'special.layout', 'special.extras', 'security.automod', 'content.community', 'onboarding.enabled'];
 
 /**
  * Przelicza domyślne wartości pól, których użytkownik nie ruszał.
@@ -196,7 +198,10 @@ function createAnswers(type = 'community') {
     channels: { slowmode: 0, voiceCount: 3, voiceLayout: 'mixed', afkTimeout: 300 },
     channelAccess: {},
     customCategories: [],
-    content: { panels: [...ALL_PANELS], community: 'full', embedColor: 'palette' },
+    content: { panels: [...ALL_PANELS], community: 'full', embedColor: 'palette', sender: 'server' },
+    onboarding: { enabled: false, groups: [], required: false },
+    bots: [],
+    graphics: { banners: true, icon: true, emojiPack: true },
     texts: {
       ruleSections: ['general', 'behaviour', 'content', 'voice', 'profile', 'type', 'punishments'],
       punishments: 'ladder',
@@ -205,7 +210,7 @@ function createAnswers(type = 'community') {
       faqDefaults: true,
       announcement: null,
     },
-    mode: { type: 'append', assign: true },
+    mode: { type: 'append', assign: true, leave: 'no', guide: true },
     touched: {},
   };
   return applyDefaults(answers);

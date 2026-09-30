@@ -57,6 +57,7 @@ function createInteraction({ guild, userId = '1', customId, values, fields = {},
         return fields[id];
       },
       getStringSelectValues: (id) => fields[id] ?? [],
+      getUploadedFiles: (id) => (Array.isArray(fields[id]) ? new Map(fields[id].map((f, i) => [String(i), f])) : null),
     },
     reply: record('replies'),
     update: record('updates'),

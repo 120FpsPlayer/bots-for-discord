@@ -7,7 +7,12 @@ const { channelPages, rolePages, summaryFields } = require('./preview');
 const {
   COLORS, cid, embed, field, button, row, selectRow, progressBar, modal, modalText, clip, ButtonStyle, formatDuration,
 } = require('./ui');
-const { loadProjectAttachment } = require('./project');
+const { loadProjectAttachment, sanitizeAnswers } = require('./project');
+const { packageOf, applyPackage } = require('../access/packages');
+const { slugify, ID_RE } = require('../access/templates');
+const gfx = require('../graphics/engine');
+const { renderPreview } = require('../graphics/preview');
+const { renderBanner, bannerFor } = require('../graphics/art');
 const { computeStats } = require('../cleanup/snapshot');
 const { AttemptLimiter, maskCode, CODE_LENGTH } = require('../access/codes');
 const { createLogger } = require('../utils/logger');
@@ -18,16 +23,41 @@ const log = createLogger('kreator');
 const QUICK_STEPS = ['type', 'basics', 'profile', 'modules'];
 const FULL_STEPS = STEPS.map((st) => st.id);
 
-/** Kolejność kroków w bieżącym trybie (szybki / pełny). */
+/**
+ * Kolejność kroków w bieżącym trybie (szybki / pełny) z uwzględnieniem pakietu i szablonu:
+ * pakiet „basic” = tylko szybkie pytania + tryb budowy; szablon = bez zmiany typu serwera.
+ */
 function sequence(s) {
-  return s.quick && QUICK_STEPS.includes(s.step) ? QUICK_STEPS : FULL_STEPS;
+  const limited = s.pkg && !s.pkg.full;
+  let seq = limited ? [...QUICK_STEPS, 'mode'] : s.quick && QUICK_STEPS.includes(s.step) ? QUICK_STEPS : FULL_STEPS;
+  if (s.template) seq = limited ? ['basics', 'mode'] : seq.filter((id) => id !== 'type');
+  return seq;
+}
+
+/**
+ * Pobiera logo do podglądu – tylko z CDN Discorda (tam trafiają wgrane pliki), z limitem czasu i rozmiaru.
+ * Innych adresów nie pobieramy (bezpieczeństwo hostingu) – podgląd pokaże wtedy inicjały.
+ */
+async function fetchImage(url) {
+  if (!url || !/^https:\/\/(cdn\.discordapp\.com|media\.discordapp\.net)\//i.test(url)) return null;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!res.ok) return null;
+    const buf = Buffer.from(await res.arrayBuffer());
+    return buf.length <= 10 * 1024 * 1024 ? buf : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
  * Router kreatora: renderuje panel (intro → kroki → podsumowanie → podgląd → budowa)
  * i obsługuje wszystkie interakcje z customId zaczynającym się od „wz:”.
  */
-function createWizard({ store, config, runBuild, codes = null }) {
+function createWizard({
+  store, config, runBuild, codes = null, templates = null, notifier = null, leaver = null, isSeller = () => false,
+}) {
+  const services = { codes, templates, notifier, leaver };
   const footer = `Panel widzisz tylko Ty • sesja wygasa po ${config.sessionTimeoutMinutes} min bezczynności`;
 
   // ───────────── Ekrany ─────────────
@@ -39,7 +69,8 @@ function createWizard({ store, config, runBuild, codes = null }) {
       `${env.botTop ? '✅' : '⚠️'} Rola bota ${env.botTop ? 'jest najwyżej na liście ról' : 'nie jest najwyżej – role nad nią nie zostaną zmienione ani usunięte'}`,
       `${env.existingChannels < 400 ? '✅' : '⚠️'} Kanały na serwerze: **${env.existingChannels}**/500`,
       `${env.existingRoles < 200 ? '✅' : '⚠️'} Role na serwerze: **${env.existingRoles}**/250`,
-      env.code ? `🔑 Kod dostępu \`${env.code.masked}\` – pozostało budów: **${env.code.remaining}**/${env.code.uses}` : null,
+      env.code ? `🔑 Kod dostępu \`${env.code.masked}\` – pozostało budów: **${env.code.remaining}**/${env.code.uses}${env.code.expiresAt ? ` • ważny do <t:${Math.floor(Date.parse(env.code.expiresAt) / 1000)}:d>` : ''}` : null,
+      s.pkg ? `${s.pkg.emoji} Pakiet **${s.pkg.label}** – ${s.pkg.description}` : null,
     ].filter(Boolean);
     return {
       embeds: [embed({
@@ -63,7 +94,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
         footer,
       })],
       components: [row(
-        button(cid(s, 'n', 'start'), `Pełny kreator (${STEPS.length} kroków)`, { style: ButtonStyle.Primary, emoji: '🚀', disabled: !env.botAdmin }),
+        button(cid(s, 'n', 'start'), s.pkg && !s.pkg.full ? 'Pełny kreator (🔒 pakiet Standard)' : `Pełny kreator (${STEPS.length} kroków)`, { style: ButtonStyle.Primary, emoji: '🚀', disabled: !env.botAdmin || Boolean(s.pkg && !s.pkg.full) }),
         button(cid(s, 'n', 'quick'), `Szybki kreator (${QUICK_STEPS.length} kroki)`, { style: ButtonStyle.Success, emoji: '⚡', disabled: !env.botAdmin }),
         button(cid(s, 'n', 'cancel'), 'Anuluj', { style: ButtonStyle.Danger, emoji: '✖️' }),
       )],
@@ -84,6 +115,10 @@ function createWizard({ store, config, runBuild, codes = null }) {
     const step = STEPS[STEP_INDEX[s.step]];
     const seq = sequence(s);
     const pos = seq.indexOf(s.step);
+    if (pos === -1) {
+      s.step = 'summary';
+      return summaryFrame(s);
+    }
     const view = step.render(s);
     const description = [
       s.flash ? `> ${s.flash}\n` : null,
@@ -228,6 +263,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
     const bp = computeBlueprint(s);
     const description = [
       s.flash ? `> ${s.flash}\n` : null,
+      s.template ? `📦 **Szablon „${clip(s.template.name, 80)}”**${s.template.description ? ` – ${clip(s.template.description, 300)}` : ''}\n` : null,
       bp.errors.length
         ? '❌ **Popraw zaznaczone problemy, aby móc zbudować serwer.**'
         : '✅ **Wszystko gotowe!** Sprawdź podsumowanie, obejrzyj podgląd kanałów i ról, a potem kliknij **Zbuduj serwer**.',
@@ -237,7 +273,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
     s.flash = null;
     return {
       embeds: [embed({
-        title: '📋 Podsumowanie – sprawdź, zanim zbuduję',
+        title: s.template ? `📦 ${clip(s.template.name, 60)} – gotowy do budowy` : '📋 Podsumowanie – sprawdź, zanim zbuduję',
         description,
         fields: summaryFields(s, bp),
         color: bp.errors.length ? COLORS.danger : COLORS.success,
@@ -250,14 +286,16 @@ function createWizard({ store, config, runBuild, codes = null }) {
           }),
           button(cid(s, 'n', 'pvc'), 'Kanały', { emoji: '📁' }),
           button(cid(s, 'n', 'pvr'), 'Role', { emoji: '🎭' }),
-          button(cid(s, 'n', 'export'), 'Zapisz projekt', { emoji: '💾' }),
+          button(cid(s, 'n', 'pimg'), 'Podgląd', { emoji: '🖼️', disabled: !gfx.available() }),
+          button(cid(s, 'n', 'export'), 'Zapisz projekt', { emoji: '💾', disabled: Boolean(s.template && !s.seller) }),
         ),
         selectRow(cid(s, 's', 'goto'), {
-          placeholder: '✏️ Zmień odpowiedź w kroku…',
-          options: STEPS.map((st, i) => ({ value: st.id, label: `${i + 1}. ${st.title}`, emoji: st.emoji })),
+          placeholder: s.template ? '✏️ Dopasuj szablon (nazwa, logo, tryb…)' : '✏️ Zmień odpowiedź w kroku…',
+          options: sequence(s).map((id) => ({ value: id, label: `${STEP_INDEX[id] + 1}. ${STEPS[STEP_INDEX[id]].title}`, emoji: STEPS[STEP_INDEX[id]].emoji })),
         }),
         row(
           button(cid(s, 'n', 'back'), 'Wstecz', { emoji: '◀️' }),
+          s.seller && templates ? button(cid(s, 'n', 'tplsave'), 'Zapisz jako szablon', { style: ButtonStyle.Primary, emoji: '📦' }) : null,
           button(cid(s, 'n', 'cancel'), 'Anuluj', { style: ButtonStyle.Danger, emoji: '✖️' }),
         ),
       ],
@@ -303,6 +341,8 @@ function createWizard({ store, config, runBuild, codes = null }) {
   // ───────────── Kod dostępu ─────────────
 
   const gated = () => Boolean(config.requireCode && codes);
+  /** Sprzedawca (właściciel bota) nie potrzebuje kodu i ma pakiet bez ograniczeń. */
+  const needsCode = (userId) => gated() && !isSeller(userId);
   const limiter = new AttemptLimiter();
   /** Plik projektu z /stworz czekający, aż ktoś wpisze kod: `${guildId}:${userId}` → { attachment, at }. */
   const pendingFiles = new Map();
@@ -365,6 +405,19 @@ function createWizard({ store, config, runBuild, codes = null }) {
     }
     limiter.reset(user.id);
     log.info(`🔑 Kod ${maskCode(res.code)} przypisany do ${guild.name} (${guild.id}) przez ${user.tag} – pozostało budów: ${res.remaining}/${res.uses}`);
+    notifier?.send({
+      title: '🔑 Kod dostępu wpisany',
+      color: 0x5865f2,
+      fields: [
+        { name: 'Kod', value: `\`${maskCode(res.code)}\`` },
+        { name: 'Serwer', value: `${guild.name}\n\`${guild.id}\`` },
+        { name: 'Osoba', value: `<@${user.id}>\n${user.tag}` },
+        { name: 'Pakiet', value: packageOf(res.package).label },
+        res.template ? { name: 'Szablon', value: res.template } : null,
+        { name: 'Pozostało budów', value: `${res.remaining}/${res.uses}` },
+        res.note ? { name: 'Notatka', value: res.note } : null,
+      ],
+    });
     return { ok: true, res };
   }
 
@@ -385,7 +438,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
     }
     const problem = accessProblem(interaction);
     if (problem) return interaction.reply({ ...problem, flags: MessageFlags.Ephemeral });
-    if (!gated()) return open(interaction, { attachment: takePending(key), respond: interaction.isModalSubmit?.() && !interaction.isFromMessage() ? 'reply' : 'update' });
+    if (!needsCode(interaction.user.id)) return open(interaction, { attachment: takePending(key), respond: interaction.isModalSubmit?.() && !interaction.isFromMessage() ? 'reply' : 'update' });
 
     if (action === 'enter') {
       const blockedMinutes = limiter.blockedFor(interaction.user.id);
@@ -445,7 +498,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
     if (problem) return interaction.reply({ ...problem, flags: MessageFlags.Ephemeral });
     const attachment = interaction.options?.getAttachment?.('projekt') || null;
 
-    if (gated()) {
+    if (needsCode(interaction.user.id)) {
       const grant = grantOf(interaction.guildId);
       if (grant?.error) return interaction.reply({ ...codeFrame({ error: grant.error }), flags: MessageFlags.Ephemeral });
       if (!grant) {
@@ -472,7 +525,17 @@ function createWizard({ store, config, runBuild, codes = null }) {
     const send = (payload) => (respond === 'update' ? interaction.update(payload) : interaction.reply({ ...payload, flags: MessageFlags.Ephemeral }));
     const me = guild.members.me ?? await guild.members.fetchMe();
     const highest = guild.roles.cache.reduce((max, r) => (r.position > max ? r.position : max), 0);
-    const grant = gated() ? grantOf(guild.id) : null;
+    const seller = isSeller(interaction.user.id);
+    const grant = needsCode(interaction.user.id) ? grantOf(guild.id) : null;
+    // Pakiet i szablon wynikają z kodu; sprzedawca i tryb bez kodów – bez ograniczeń.
+    const pkg = grant && !grant.error ? packageOf(grant.package) : null;
+    let template = null;
+    if (grant?.template) {
+      template = templates?.get(grant.template) || null;
+      if (!template) {
+        return send(endedFrame('📦 Brak szablonu', `Kod otwiera szablon **${grant.template}**, którego nie ma już u sprzedawcy. Skontaktuj się ze sprzedawcą – kod nie został zużyty.`, COLORS.danger));
+      }
+    }
     const env = {
       guildName: guild.name,
       ownerId: guild.ownerId,
@@ -485,7 +548,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
       verificationLevel: guild.verificationLevel,
       explicitContentFilter: guild.explicitContentFilter,
       defaultNotifications: guild.defaultMessageNotifications,
-      code: grant && !grant.error ? { masked: maskCode(grant.code), remaining: grant.remaining, uses: grant.uses } : null,
+      code: grant && !grant.error ? { masked: maskCode(grant.code), remaining: grant.remaining, uses: grant.uses, expiresAt: grant.expiresAt } : null,
     };
     // /stworz projekt:<plik.json> – wczytanie zapisanego projektu i przejście od razu do podsumowania.
     let imported = null;
@@ -502,8 +565,37 @@ function createWizard({ store, config, runBuild, codes = null }) {
       }
     }
 
+    // Projekt z pliku nie może zastąpić tego, co kupiono (szablon albo pakiet bez importu). Kopia zapasowa – zawsze można.
+    if (imported?.kind === 'project' && (template || (pkg && !pkg.import))) {
+      return interaction.editReply(endedFrame('📥 Plik niedostępny w Twoim pakiecie', template
+        ? 'Twój kod otwiera gotowy szablon – nie można wczytać innego projektu. Użyj **/stworz** bez pliku.'
+        : `Pakiet **${pkg.label}** pozwala wczytać tylko kopię zapasową z /usun, nie projekt kreatora.`, COLORS.warning));
+    }
+
     const session = store.create(guild.id, interaction.user.id, env);
-    log.info(`Nowa sesja ${session.id} na serwerze ${guild.name} (${guild.id}) – ${interaction.user.tag}${imported ? ` (wczytany plik: ${imported.kind})` : ''}`);
+    session.seller = seller;
+    session.pkg = pkg;
+    if (pkg && !pkg.full) session.quick = true;
+    log.info(`Nowa sesja ${session.id} na serwerze ${guild.name} (${guild.id}) – ${interaction.user.tag}${seller ? ' (sprzedawca)' : ''}${pkg ? ` • pakiet ${pkg.key}` : ''}${template ? ` • szablon ${template.id}` : ''}${imported ? ` (wczytany plik: ${imported.kind})` : ''}`);
+
+    if (template && !imported) {
+      try {
+        session.answers = sanitizeAnswers(template.answers);
+      } catch (err) {
+        store.delete(guild.id);
+        log.error(`Szablon ${template.id} jest uszkodzony: ${err.message}`);
+        return send(endedFrame('📦 Szablon jest uszkodzony', 'Skontaktuj się ze sprzedawcą – kod nie został zużyty.', COLORS.danger));
+      }
+      // Nazwa i logo należą do kupującego – startujemy od obecnej nazwy serwera.
+      session.answers.basics.name = guild.name;
+      session.answers.basics.iconUrl = '';
+      session.template = { id: template.id, name: template.name, description: template.description };
+      session.typeChosen = true;
+      session.step = 'summary';
+      session.flash = '📦 Wczytano szablon. Ustaw **nazwę, opis i logo** („Dopasuj szablon” → Nazwa i opis), wybierz tryb budowy i kliknij **Zbuduj serwer**.';
+      if (!env.botAdmin) session.flash += '\n❌ Bot nie ma uprawnienia Administrator – nadaj je przed budową.';
+      return send(render(session));
+    }
 
     if (imported?.kind === 'backup') {
       session.restore = { blueprint: imported.blueprint, guildName: imported.guildName, createdAt: imported.createdAt, mode: 'append', options: ['identity', 'settings', 'automod', 'community'] };
@@ -560,7 +652,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
     // Menu wyboru
     if (kind === 's') {
       if (id === 'goto' && session.step === 'summary') {
-        if (STEP_INDEX[interaction.values[0]] !== undefined) session.step = interaction.values[0];
+        if (sequence(session).includes(interaction.values[0])) session.step = interaction.values[0];
       } else {
         const handler = step?.select?.[id];
         if (handler) handler(session, interaction.values);
@@ -579,6 +671,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
     // Formularze (modale)
     if (kind === 'm') {
       if (id === 'wipe') return handleWipeConfirm(session, interaction);
+      if (id === 'tpl') return handleTemplateSave(session, interaction);
       const handler = step?.modal?.[id];
       if (handler) handler(session, interaction);
       if (interaction.isFromMessage()) return interaction.update(render(session));
@@ -599,9 +692,15 @@ function createWizard({ store, config, runBuild, codes = null }) {
     switch (id) {
       case 'start':
       case 'quick':
-        s.quick = id === 'quick';
-        s.step = STEPS[0].id;
+        s.quick = id === 'quick' || Boolean(s.pkg && !s.pkg.full);
+        s.step = sequence(s)[0];
         break;
+      case 'pimg':
+        return sendPreview(s, interaction);
+      case 'pban':
+        return sendBannerSample(s, interaction);
+      case 'tplsave':
+        return showTemplateModal(s, interaction);
       case 'next': {
         const error = STEPS[STEP_INDEX[s.step]]?.validate?.(s);
         if (error) { s.flash = `⚠️ ${error}`; break; }
@@ -609,8 +708,10 @@ function createWizard({ store, config, runBuild, codes = null }) {
         break;
       }
       case 'back':
-        if (s.step === 'summary') s.step = s.quick ? QUICK_STEPS[QUICK_STEPS.length - 1] : FULL_STEPS[FULL_STEPS.length - 1];
-        else if (pos === 0) s.step = 'intro';
+        if (s.step === 'summary') {
+          const back = s.quick && !(s.pkg && !s.pkg.full) && !s.template ? QUICK_STEPS : seq;
+          s.step = back[back.length - 1];
+        } else if (pos === 0) s.step = s.template ? 'summary' : 'intro';
         else if (pos > 0) s.step = seq[pos - 1];
         break;
       case 'sum':
@@ -646,6 +747,75 @@ function createWizard({ store, config, runBuild, codes = null }) {
     return interaction.update(render(s));
   }
 
+  // ───────────── Podgląd obrazkiem i przykładowy baner ─────────────
+
+  async function sendPreview(s, interaction) {
+    if (!gfx.available()) {
+      return interaction.reply({ content: `🖼️ Podgląd obrazkiem nie działa na tym hostingu (${gfx.unavailableReason() || 'brak biblioteki graficznej'}).`, flags: MessageFlags.Ephemeral });
+    }
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const bp = computeBlueprint(s);
+      const icon = await fetchImage(bp.guild?.iconUrl);
+      const png = await renderPreview(bp, { guildName: interaction.guild.name, icon });
+      return interaction.editReply({
+        content: '🖼️ **Podgląd serwera** – tak będzie wyglądać lista kanałów i ról. Możesz zapisać obrazek (np. do portfolio albo ogłoszenia).',
+        files: [new AttachmentBuilder(png, { name: 'podglad-serwera.png' })],
+      });
+    } catch (err) {
+      log.error('Podgląd obrazkiem nieudany:', err);
+      return interaction.editReply({ content: '❌ Nie udało się wygenerować podglądu.' });
+    }
+  }
+
+  async function sendBannerSample(s, interaction) {
+    if (!gfx.available()) return interaction.reply({ content: '🏞️ Banery nie działają na tym hostingu.', flags: MessageFlags.Ephemeral });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const bp = computeBlueprint(s);
+    const spec = bannerFor('rules', bp.meta.language);
+    const png = await renderBanner({ ...spec, subtitle: bp.guild.name || interaction.guild.name, color: bp.meta.embedColor });
+    return interaction.editReply({
+      content: '🏞️ **Przykładowy baner** – taki pojawi się nad regulaminem (a podobne nad informacjami, FAQ i opisem ról). Kolor zmienisz w kroku „Wygląd” lub „Wiadomości”.',
+      files: [new AttachmentBuilder(png, { name: 'baner.png' })],
+    });
+  }
+
+  // ───────────── Szablony sprzedawcy ─────────────
+
+  function showTemplateModal(s, interaction) {
+    if (!s.seller || !templates) return interaction.reply({ content: '🔒 Szablony może zapisywać tylko właściciel bota.', flags: MessageFlags.Ephemeral });
+    const name = s.template?.name || s.answers.basics.name || '';
+    return interaction.showModal(modal(cid(s, 'm', 'tpl'), 'Zapisz jako szablon', [
+      { id: 'id', label: 'ID szablonu (do kodów)', description: 'Małe litery, cyfry i myślniki – np. minecraft-premium', style: 'short', required: true, min: 2, max: 32, value: s.template?.id || slugify(name), placeholder: 'minecraft-premium' },
+      { id: 'name', label: 'Nazwa szablonu', description: 'Widzi ją kupujący', style: 'short', required: true, max: 80, value: name, placeholder: 'Minecraft Premium' },
+      { id: 'description', label: 'Opis dla kupującego (opcjonalnie)', style: 'paragraph', max: 300, value: s.template?.description || '', placeholder: 'Kompletny serwer Minecraft: tryby gry, sklep, rekrutacja, pełna administracja…' },
+    ]));
+  }
+
+  async function handleTemplateSave(s, interaction) {
+    const reply = (payload) => (interaction.isFromMessage() ? interaction.update(payload) : interaction.reply({ ...payload, flags: MessageFlags.Ephemeral }));
+    if (!s.seller || !templates) return reply(render(s));
+    const id = slugify(modalText(interaction, 'id'));
+    if (!ID_RE.test(id)) {
+      s.flash = '⚠️ ID szablonu: 2–32 znaki – małe litery, cyfry i myślniki (np. minecraft-premium).';
+      return reply(render(s));
+    }
+    const bp = computeBlueprint(s);
+    const answers = JSON.parse(JSON.stringify(s.answers));
+    answers.mode = { ...answers.mode, type: 'append' };
+    const saved = templates.save({
+      id,
+      name: modalText(interaction, 'name') || id,
+      description: modalText(interaction, 'description'),
+      answers,
+      stats: { roles: bp.stats.roles, categories: bp.stats.categories, channels: bp.stats.channels },
+      authorId: interaction.user.id,
+    });
+    log.info(`📦 Szablon „${saved.name}” (${saved.id}) ${saved.updated ? 'zaktualizowany' : 'zapisany'} przez ${interaction.user.tag}.`);
+    s.flash = `📦 Szablon **${saved.name}** ${saved.updated ? 'zaktualizowany' : 'zapisany'}. Kod dla klienta wygenerujesz w konsoli: \`kod szablon=${saved.id}\``;
+    return reply(render(s));
+  }
+
   async function exportBlueprint(s, interaction) {
     const bp = s.blueprint || computeBlueprint(s);
     const json = JSON.stringify({ answers: s.answers, blueprint: bp }, null, 2);
@@ -663,7 +833,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
       s.flash = `⏳ Na serwerze trwa teraz: ${busy}. Poczekaj, aż się zakończy.`;
       return interaction.update(render(s));
     }
-    if (gated()) {
+    if (gated() && !s.seller) {
       const grant = grantOf(s.guildId);
       if (!grant || grant.error) {
         s.flash = grant?.error
@@ -673,6 +843,9 @@ function createWizard({ store, config, runBuild, codes = null }) {
       }
       s.env.code = { masked: maskCode(grant.code), remaining: grant.remaining, uses: grant.uses };
     }
+    // Funkcje spoza pakietu są wyłączane także tutaj (np. w projekcie z innego pakietu).
+    const removed = applyPackage(s.answers, s.pkg);
+    if (removed.length) log.info(`Pakiet ${s.pkg.key}: wyłączono ${removed.join(', ')}.`);
     const bp = computeBlueprint(s);
     if (bp.errors.length) {
       s.flash = '❌ Najpierw popraw problemy wymienione w podsumowaniu.';
@@ -710,7 +883,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
   async function launch(s, interaction) {
     // Kod dostępu: jedno użycie schodzi w chwili startu budowy (dwie budowy naraz nie przejdą na jednym kodzie).
     let ticket = null;
-    if (gated()) {
+    if (gated() && !s.seller) {
       let res;
       try {
         res = codes.consume(s.guildId, { guildName: interaction.guild.name, userId: interaction.user.id, kind: s.restore ? 'przywrócenie kopii' : 'budowa' });
@@ -736,7 +909,7 @@ function createWizard({ store, config, runBuild, codes = null }) {
         embeds: [embed({ title: '🏗️ Przygotowuję budowę…', description: `${progressBar(0, 1)}\n⏱️ Szacowany czas: ~${formatDuration(bp.estimatedSeconds)}`, color: COLORS.build })],
         components: [],
       });
-      result = await runBuild({ session: s, blueprint: bp, interaction });
+      result = await runBuild({ session: s, blueprint: bp, interaction, services });
     } catch (err) {
       log.error('Budowa zakończona błędem:', err);
     } finally {
@@ -752,6 +925,27 @@ function createWizard({ store, config, runBuild, codes = null }) {
           log.error(err.message);
         }
       }
+      if (createdAnything && s.template && !result?.fatal) {
+        try { templates?.countUse(s.template.id); } catch { /* statystyka – bez znaczenia dla budowy */ }
+      }
+      const g = interaction.guild;
+      const c = result?.created || {};
+      notifier?.send({
+        title: !result || result.fatal ? '💥 Budowa nieudana' : s.restore ? '♻️ Kopia przywrócona' : '🏗️ Serwer zbudowany',
+        color: !result || result.fatal ? 0xed4245 : 0x57f287,
+        fields: [
+          { name: 'Serwer', value: `${g.name}\n\`${g.id}\`` },
+          { name: 'Osoba', value: `<@${interaction.user.id}>\n${interaction.user.tag}` },
+          ticket ? { name: 'Kod', value: `\`${maskCode(ticket.code)}\` (pozostało ${ticket.remaining}/${ticket.uses})` } : { name: 'Kod', value: s.seller ? 'sprzedawca – bez kodu' : 'bez kodu' },
+          s.pkg ? { name: 'Pakiet', value: s.pkg.label } : null,
+          s.template ? { name: 'Szablon', value: `${s.template.name} (${s.template.id})` } : null,
+          result ? { name: 'Utworzono', value: `🎭 ${c.roles} ról • 📁 ${c.categories} kat. • 💬 ${c.channels} kan.${c.emojis ? ` • 😀 ${c.emojis}` : ''}${c.onboarding ? ' • 🧭 onboarding' : ''}` } : null,
+          result ? { name: 'Czas', value: formatDuration(result.duration / 1000) } : null,
+          result?.fatal ? { name: 'Błąd', value: result.fatal } : null,
+          result && (result.errors.length || result.warnings.length) ? { name: 'Uwagi', value: `${result.errors.length} błędów, ${result.warnings.length} ostrzeżeń` } : null,
+          !createdAnything && ticket ? { name: 'Kod', value: 'użycie zwrócone (nic nie powstało)' } : null,
+        ],
+      });
     }
     return result;
   }

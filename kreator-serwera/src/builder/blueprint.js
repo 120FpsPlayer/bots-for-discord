@@ -11,6 +11,7 @@ const { POLISH_PROFANITY, SCAM_KEYWORDS, INVITE_REGEX } = require('../data/secur
 const P = require('./permissions');
 const N = require('./naming');
 const { L, tr, fill } = require('../utils/i18n');
+const { BOTS } = require('../data/bots');
 
 /**
  * Zamienia odpowiedzi z kreatora na „blueprint” – kompletny, niezależny od Discorda
@@ -59,7 +60,18 @@ function buildBlueprint(input, env = {}) {
   const palette = PALETTES[answers.style.palette] ?? PALETTES.modern;
   const roleEmoji = answers.style.options.includes('roleEmoji');
   const useSeparators = answers.style.options.includes('separators');
-  const modules = new Set(answers.modules.filter((m) => MODULES[m]));
+  // Sekcje ukryte (grupa X) dodają tylko boty z kroku „Boty” – nie da się ich wybrać ręcznie.
+  const modules = new Set(answers.modules.filter((m) => MODULES[m] && MODULES[m].group !== 'X'));
+  const bots = [...new Set((answers.bots || []).filter((k) => BOTS[k]))];
+  for (const key of bots) {
+    for (const need of BOTS[key].needs) {
+      if (need.unless && modules.has(need.unless)) continue;
+      if (!modules.has(need.module)) {
+        modules.add(need.module);
+        if (MODULES[need.module]?.group !== 'X') warnings.push(`Bot ${BOTS[key].name} potrzebuje sekcji „${MODULES[need.module].label}” – została dodana.`);
+      }
+    }
+  }
   const panels = new Set(answers.content.panels);
   const community = answers.content.community !== 'off';
   const size = SIZE_ORDER.includes(answers.size) ? answers.size : 'medium';
@@ -81,6 +93,10 @@ function buildBlueprint(input, env = {}) {
     warnings.push('Tryb Społeczności wymaga kanału dla moderatorów – dodano „Strefę administracji”.');
   }
   const roleGroups = new Set(answers.communityRoles);
+  if (bots.length && !roleGroups.has('bots')) {
+    roleGroups.add('bots');
+    warnings.push('Wybrane boty dostaną rolę „Boty” z dostępem do swoich kanałów – dodano ją automatycznie.');
+  }
   if (modules.has('verification') && !roleGroups.has('member')) {
     roleGroups.add('member');
     warnings.push('Weryfikacja wymaga roli członka – została dodana automatycznie.');
@@ -629,6 +645,11 @@ function buildBlueprint(input, env = {}) {
     });
   }
 
+  // ── ONBOARDING (natywne pytania Discorda przy wejściu – działa bez żadnego bota) ──
+  const onboarding = buildOnboarding({
+    answers, T, lang, list, items, privateItems, roles, has, allChannels, hasChannel, community, gate, warnings,
+  });
+
   // ── USTAWIENIA SERWERA ────────────────────────────────────────────
   let verificationLevel = Math.min(4, Math.max(0, Number(answers.security.verificationLevel) || 0));
   let contentFilter = Math.min(2, Math.max(0, Number(answers.security.contentFilter) || 0));
@@ -741,7 +762,19 @@ function buildBlueprint(input, env = {}) {
       mode: wipe ? 'wipe' : 'append',
       gate,
       embedColor,
+      typeEmoji: preset.emoji || '⭐',
+      /** Nadawca wiadomości: 'server' = webhook z nazwą i ikoną serwera, 'bot' = sam bot. */
+      sender: answers.content?.sender === 'bot' ? 'bot' : 'server',
+      graphics: {
+        banners: Boolean(answers.graphics?.banners),
+        icon: Boolean(answers.graphics?.icon),
+        emojiPack: Boolean(answers.graphics?.emojiPack),
+      },
+      leave: ['now', 'after'].includes(answers.mode?.leave) ? answers.mode.leave : 'no',
+      guide: answers.mode?.guide !== false,
     },
+    bots,
+    onboarding,
     guild,
     everyone: gate ? [] : memberPerms,
     roles,
@@ -762,4 +795,78 @@ function buildBlueprint(input, env = {}) {
   };
 }
 
-module.exports = { buildBlueprint, sectionOfCategory, LIMITS, TEXT_KINDS, VOICE_KINDS };
+/** Grupy pytań onboardingu (w tej kolejności). */
+const ONBOARDING_GROUPS = {
+  items: { emoji: '🎮', label: 'Elementy listy (gry, tryby, działy…)', title: null },
+  notifications: { emoji: '🔔', label: 'Powiadomienia', title: L('Jakie powiadomienia chcesz dostawać?', 'Which notifications do you want?') },
+  colors: { emoji: '🎨', label: 'Kolor nicku', title: L('Wybierz kolor swojego nicku', 'Pick your name color') },
+  platform: { emoji: '🖥️', label: 'Platformy', title: L('Z jakich platform korzystasz?', 'Which platforms do you use?') },
+  age: { emoji: '🎂', label: 'Wiek', title: L('Ile masz lat?', 'How old are you?') },
+  pronouns: { emoji: '💬', label: 'Zaimki', title: L('Twoje zaimki', 'Your pronouns') },
+  region: { emoji: '📍', label: 'Region', title: L('Skąd jesteś?', 'Where are you from?') },
+  custom: { emoji: '🔹', label: 'Własne role dla członków', title: L('Co Cię opisuje?', 'What describes you?') },
+};
+
+/** Limity onboardingu Discorda (bezpieczne wartości). */
+const ONBOARDING_LIMITS = { prompts: 8, options: 25, optionTitle: 50, promptTitle: 100, minDefault: 7, minWritable: 5 };
+
+function buildOnboarding({ answers, T, lang, list, items, privateItems, roles, has, allChannels, hasChannel, community, gate, warnings }) {
+  const ob = answers.onboarding || {};
+  if (!ob.enabled) return null;
+  const problems = [];
+  if (!community) problems.push('wymaga trybu Społeczności');
+  if (gate) problems.push('nie działa razem z sekcją „Weryfikacja” (nowe osoby muszą móc pisać na kanałach domyślnych)');
+  if (problems.length) {
+    warnings.push(`Onboarding pominięty – ${problems.join(' i ')}.`);
+    return null;
+  }
+  const want = new Set(Array.isArray(ob.groups) && ob.groups.length ? ob.groups : Object.keys(ONBOARDING_GROUPS));
+  const title = (text) => N.truncateName(text, ONBOARDING_LIMITS.optionTitle);
+  const prompts = [];
+  const optInChannels = new Set();
+
+  // Elementy listy: wybór daje rolę elementu, a publiczne kanały elementu pojawiają się na liście kanałów.
+  if (want.has('items') && list && items.length) {
+    const options = items.slice(0, ONBOARDING_LIMITS.options).map((item, i) => {
+      const channels = privateItems ? [] : [`item${i}t`, `item${i}x`, `item${i}v`].filter(hasChannel);
+      return { title: title(N.cleanName(item, 80)), emoji: list.roleEmoji || list.emoji, roles: has(`item${i}`) ? [`item${i}`] : [], channels };
+    }).filter((o) => o.roles.length || o.channels.length);
+    if (options.length) {
+      options.forEach((o) => o.channels.forEach((c) => optInChannels.add(c)));
+      const cat = tr(list.category, lang);
+      prompts.push({ key: 'items', title: N.truncateName(T(`${cat} – co Cię interesuje?`, `${cat} – what are you into?`), ONBOARDING_LIMITS.promptTitle), single: false, options });
+    }
+  }
+  for (const [group, def] of Object.entries(ONBOARDING_GROUPS)) {
+    if (group === 'items' || !want.has(group)) continue;
+    const groupRoles = roles.filter((r) => r.self?.group === group);
+    if (!groupRoles.length) continue;
+    prompts.push({
+      key: group,
+      title: N.truncateName(tr(def.title, lang), ONBOARDING_LIMITS.promptTitle),
+      single: groupRoles[0].self.mode === 'single',
+      options: groupRoles.slice(0, ONBOARDING_LIMITS.options).map((r) => ({ title: title(r.label), emoji: r.emoji || null, roles: [r.key], channels: [] })),
+    });
+  }
+  if (!prompts.length) {
+    warnings.push('Onboarding pominięty – brak ról do wyboru (włącz np. kolory, powiadomienia albo role elementów listy w kroku „Role społeczności”).');
+    return null;
+  }
+  const visible = (c) => ['members', 'unverified'].includes(c.access?.view);
+  const defaults = allChannels.filter((c) => visible(c) && !optInChannels.has(c.key));
+  const writable = defaults.filter((c) => ['text', 'forum'].includes(c.kind) && c.access.write === 'all');
+  if (defaults.length < ONBOARDING_LIMITS.minDefault || writable.length < ONBOARDING_LIMITS.minWritable) {
+    warnings.push(`Onboarding pominięty – Discord wymaga min. ${ONBOARDING_LIMITS.minDefault} kanałów widocznych dla wszystkich, w tym ${ONBOARDING_LIMITS.minWritable}, na których można pisać (jest ${defaults.length} i ${writable.length}). Dodaj kanały społeczności.`);
+    return null;
+  }
+  const limited = prompts.slice(0, ONBOARDING_LIMITS.prompts);
+  if (prompts.length > limited.length) warnings.push(`Onboarding: użyto ${limited.length} pierwszych pytań z ${prompts.length}.`);
+  return {
+    prompts: limited.map((p) => ({ ...p, required: Boolean(ob.required), dropdown: p.options.length > 8 })),
+    defaultChannels: defaults.map((c) => c.key),
+  };
+}
+
+module.exports = {
+  buildBlueprint, sectionOfCategory, LIMITS, TEXT_KINDS, VOICE_KINDS, ONBOARDING_GROUPS, ONBOARDING_LIMITS,
+};

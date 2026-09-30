@@ -294,6 +294,39 @@ const MODULES = {
       L('Zarchiwizowane kanały i treści (tylko do odczytu).', 'Archived channels and content (read-only).'),
       { cat: 'archive' })],
   },
+
+  // ───────────── X: ukryte – kanały pod popularne boty (dodawane automatycznie w kroku „Boty”) ─────────────
+  botLevelup: {
+    group: 'X', emoji: '🆙', label: 'Awanse (bot poziomów)',
+    channels: [ch('levelup', '🆙', L('awanse', 'level-ups'),
+      L('Tu bot poziomów ogłasza awanse. Pisz na czacie, żeby zdobywać XP!', 'Level-up announcements from the levels bot. Chat to earn XP!'),
+      { cat: 'community', profile: 'readonly' })],
+  },
+  botLogs: {
+    group: 'X', emoji: '📋', label: 'Logi bota moderacji',
+    channels: [ch('botLogs', '📋', L('logi-bota', 'bot-logs'), L('Logi bota moderacji.', 'Moderation bot logs.'), { cat: 'logs' })],
+  },
+  botTickets: {
+    group: 'X', emoji: '🎫', label: 'Tickety (bot zgłoszeń)',
+    channels: [
+      ch('tickets', '🎫', L('tickety', 'tickets'),
+        L('Potrzebujesz pomocy ekipy? Otwórz zgłoszenie przyciskiem bota poniżej.', 'Need help from the staff? Open a ticket with the bot button below.'),
+        { cat: 'info', profile: 'readonly' }),
+      ch('ticketLogs', '🗃️', L('logi-ticketów', 'ticket-logs'), L('Zapisy zamkniętych zgłoszeń.', 'Transcripts of closed tickets.'), { cat: 'logs' }),
+    ],
+  },
+  botBump: {
+    group: 'X', emoji: '⏫', label: 'Bump (promocja serwera)',
+    channels: [ch('bump', '⏫', L('bump', 'bump'),
+      L('Wpisz /bump co 2 godziny, żeby podbić serwer na liście Disboard.', 'Type /bump every 2 hours to boost the server on Disboard.'),
+      { cat: 'community' })],
+  },
+  botGames: {
+    group: 'X', emoji: '🎲', label: 'Gry botów',
+    channels: [ch('botGames', '🎲', L('gry-botów', 'bot-games'),
+      L('Ekonomia, minigry i zabawa z botami – tu nie zaśmiecają czatu.', 'Economy, minigames and bot fun – keeps the main chat clean.'),
+      { cat: 'community' })],
+  },
 };
 
 const MODULE_GROUPS = {

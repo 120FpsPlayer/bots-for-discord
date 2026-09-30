@@ -106,6 +106,12 @@ async function performCleanup(guild, { targets, fresh = true, keepChannelIds = [
     }
     total = channels.length + roles.length + rules.length + events.length + emojis.length + stickers.length + bans.length + 6;
 
+    // 0. Onboarding blokuje usuwanie swoich kanałów domyślnych – wyłączamy go jako pierwszy.
+    if (guild.features?.includes('COMMUNITY') && what.has('channels') && guild.fetchOnboarding) {
+      const onboarding = await guild.fetchOnboarding().catch(() => null);
+      if (onboarding?.enabled) await attempt('Wyłączanie onboardingu', () => guild.editOnboarding({ enabled: false, prompts: [], defaultChannels: [], mode: 0, reason }));
+    }
+
     // 1. Tryb Społeczności blokuje usunięcie kanału regulaminu i ogłoszeń dla moderatorów.
     if (guild.features?.includes('COMMUNITY') && (what.has('channels') || what.has('settings'))) {
       startPhase('Wyłączanie trybu Społeczności');

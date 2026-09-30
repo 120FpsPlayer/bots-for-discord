@@ -8,6 +8,10 @@ const {
 } = require('./ui');
 const { createLogger } = require('../utils/logger');
 const { maskCode } = require('../access/codes');
+const { buildGuide } = require('./guide');
+const { BOTS, inviteUrl } = require('../data/bots');
+const gfx = require('../graphics/engine');
+const { renderPreview } = require('../graphics/preview');
 
 const log = createLogger('budowa');
 const EDIT_INTERVAL_MS = 1500;
@@ -16,7 +20,7 @@ const EDIT_INTERVAL_MS = 1500;
  * Uruchamia budowę i na bieżąco odświeża panel (pasek postępu, etapy, czas).
  * Aktualizacje są dławione, żeby nie przekroczyć limitów edycji wiadomości.
  */
-async function runBuild({ session, blueprint, interaction }) {
+async function runBuild({ session, blueprint, interaction, services = {} }) {
   const { guild } = interaction;
   let lastEdit = 0;
   let pending = null;
@@ -83,6 +87,31 @@ async function runBuild({ session, blueprint, interaction }) {
   const createdAnything = result.ids && Object.values(result.ids).some((list) => list.length);
   if (createdAnything) undo.remember(guild.id, result, { userId: interaction.user.id, wipe: blueprint.meta.mode === 'wipe', ticket: session.ticket || null });
 
+  // Bot opuszcza serwer po budowie (opcja w kroku „Tryb budowy”).
+  result.leaveAt = null;
+  if (services.leaver && blueprint.meta.leave !== 'no' && !result.fatal && !result.aborted) {
+    result.leaveAt = Date.now() + (blueprint.meta.leave === 'now' ? 60_000 : undo.TTL_MS);
+    services.leaver.schedule(guild.id, result.leaveAt, { guildName: guild.name, by: interaction.user.id });
+  }
+
+  // Przewodnik „co dalej”: na kanał ekipy (sam tekst – zostaje po usunięciu bota) i w wiadomości prywatnej (z linkami i podglądem).
+  result.guideSent = false;
+  if (blueprint.meta.guide && !result.fatal && createdAnything) {
+    try {
+      const guide = buildGuide({ bp: blueprint, result, guild, leaveAt: result.leaveAt, undoUntil: Date.now() + undo.TTL_MS });
+      const staff = guild.channels.cache.get(result.channels.management || result.channels.staffChat || result.channels.staffNews);
+      if (staff) await staff.send({ embeds: guide.embeds, allowedMentions: { parse: [] } }).catch(() => {});
+      let files = [];
+      if (gfx.available()) {
+        const png = await renderPreview(blueprint, { guildName: guild.name }).catch(() => null);
+        if (png) files = [{ attachment: png, name: 'podglad-serwera.png' }];
+      }
+      result.guideSent = await interaction.user.send({ embeds: guide.embeds, components: guide.components, files }).then(() => true).catch(() => false);
+    } catch (err) {
+      log.warn(`Przewodnik nie został wysłany: ${err.message}`);
+    }
+  }
+
   await editing;
   const frame = doneFrame({ session, blueprint, result, guild, originChannelId: interaction.channelId });
   tokenAlive = true;
@@ -118,6 +147,15 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
     fields.push(field('🧹 Usunięto', `💬 ${d.channels} kanałów\n🎭 ${d.roles} ról\n🤖 ${d.automod} reguł AutoMod`, true));
   }
   fields.push(field('⏱️ Czas budowy', `${formatDuration(result.duration / 1000)}\n🌟 Społeczność: ${result.community ? 'włączona' : 'wyłączona'}`, true));
+  const extras = [
+    c.messages ? `✉️ Wiadomości wysłane jako **${result.sender === 'server' ? 'serwer (nazwa i logo serwera)' : 'bot'}**` : null,
+    c.banners ? `🏞️ ${c.banners} banerów nad treściami` : null,
+    c.icon ? '🖼️ Ikona serwera z inicjałów' : null,
+    c.emojis ? `😀 ${c.emojis} emoji serwera: ${result.emojis.slice(0, 8).join(' ')}` : null,
+    c.onboarding ? `🧭 Onboarding: ${c.onboarding} pytań przy wejściu` : null,
+    result.leaveAt ? `🚪 Bot opuści serwer <t:${Math.floor(result.leaveAt / 1000)}:R>` : null,
+  ].filter(Boolean);
+  if (extras.length) fields.push(field('🎨 Wygląd i dodatki', extras.join('\n')));
   const st = blueprint.stats;
   fields.push(field('🔑 Uprawnienia kanałów', [
     `⚙️ Ustawiono **${c.overwrites}** nadpisań uprawnień`,
@@ -139,7 +177,8 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
   } else fields.push(field('🚀 Następne kroki', [
     '1. **Przeciągnij rolę bota na samą górę** listy ról (Ustawienia → Role).',
     '2. Nadaj role ekipie i sprawdź regulamin – dopasuj go do siebie.',
-    '3. Dodaj boty (moderacja/logi, poziomy, muzyka) i nadaj im rolę **Boty**.',
+    blueprint.bots?.length ? '3. Dodaj wybrane boty przyciskami poniżej i nadaj im rolę **Boty**.' : '3. Dodaj boty (moderacja/logi, poziomy, muzyka) i nadaj im rolę **Boty**.',
+    result.guideSent ? '📘 **Przewodnik** (co ustawić, linki do botów, podgląd serwera) wysłałem Ci w wiadomości prywatnej.' : null,
     blueprint.meta.gate ? '4. **Dodaj bota weryfikacyjnego**, który nadaje rolę członka – do tego czasu nowe osoby widzą tylko regulamin i #weryfikacja.' : null,
     '✅ Ten bot nie jest już potrzebny – serwer działa bez niego (zostaw go tylko, jeśli chcesz używać /usun).',
     '↩️ Nie podoba Ci się wynik? **Cofnij budowę** usunie wszystko, co utworzyłem (przez 2 godziny).',
@@ -154,6 +193,8 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
   if (link('staffChat')) buttons.push(linkButton(link('staffChat'), 'Czat ekipy', '🛡️'));
   const undoBtn = undo.undoButton(guild.id);
   if (undoBtn) buttons.push(undoBtn);
+  const botButtons = (blueprint.bots || []).filter((k) => BOTS[k]).slice(0, 5)
+    .map((k) => linkButton(inviteUrl(BOTS[k], guild.id), `Dodaj ${BOTS[k].name}`, BOTS[k].emoji));
   if (blueprint.meta.mode === 'wipe' && !result.fatal) {
     buttons.push(button(`wzx:delorigin:${originChannelId}`, 'Usuń ten kanał', { style: ButtonStyle.Danger, emoji: '🗑️' }));
   }
@@ -174,7 +215,7 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
       fields,
       footer: `Kreator Serwera • sesja ${session.id}${session.ticket ? ` • kod ${maskCode(session.ticket.code)}: pozostało budów ${session.ticket.remaining}/${session.ticket.uses}` : ''}`,
     })],
-    components: buttons.length ? [row(...buttons)] : [],
+    components: [buttons.length ? row(...buttons.slice(0, 5)) : null, botButtons.length && !result.fatal ? row(...botButtons) : null].filter(Boolean),
   };
 }
 

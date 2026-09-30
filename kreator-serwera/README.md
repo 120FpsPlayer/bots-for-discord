@@ -3,7 +3,7 @@
 Bot, który **jedną komendą `/stworz`** buduje cały serwer Discord dokładnie tak, jak go opiszesz:
 **role z uprawnieniami, kategorie, kanały z ustawionym dostępem (kto widzi, kto pisze), regulamin, informacje, weryfikację, AutoMod i ustawienia bezpieczeństwa**.
 
-Po wpisaniu `/stworz` otwiera się interaktywny panel (widoczny tylko dla Ciebie), który zadaje **16 szczegółowych pytań** (albo tylko 4 w trybie ⚡ szybkim):
+Po wpisaniu `/stworz` otwiera się interaktywny panel (widoczny tylko dla Ciebie), który zadaje **19 szczegółowych pytań** (albo tylko 4 w trybie ⚡ szybkim):
 wybierasz opcje z menu, wpisujesz własne nazwy i listy, oglądasz podgląd, a na końcu klikasz **Zbuduj serwer** –
 bot tworzy wszystko sam i pokazuje postęp na żywo.
 
@@ -11,6 +11,12 @@ Druga komenda, **`/usun`**, czyści serwer (kanały, role, AutoMod i więcej) �
 
 Bot jest **wyłącznie od tworzenia serwerów** – po budowie nie jest potrzebny (nie obsługuje weryfikacji, logów ani żadnych przycisków; wszystkie wiadomości to sam tekst).
 Jest przygotowany do **sprzedaży gotowych serwerów**: `/stworz` działa dopiero po wpisaniu **kodu dostępu**, który sprzedawca generuje w konsoli bota (np. na Wispbyte).
+Kody mogą mieć **pakiet** (Podstawowy / Standard / Premium), **gotowy szablon** („Minecraft Premium” – klient buduje go jednym kliknięciem) i **termin ważności**,
+a o każdym użyciu kodu i każdej budowie bot może powiadomić Cię na Twoim Discordzie.
+
+| Podgląd serwera (obrazek) | Baner nad regulaminem | Ikona z inicjałów i paczka emoji |
+|---|---|---|
+| ![Podgląd](docs/przyklad-podglad.png) | ![Baner](docs/przyklad-baner.png) | ![Ikona i emoji](docs/przyklad-ikona-emoji.png) |
 
 ---
 
@@ -39,6 +45,17 @@ Jest przygotowany do **sprzedaży gotowych serwerów**: `/stworz` działa dopier
 | 💾 **Zapisz i wczytaj projekt** | zapisz projekt do pliku i wczytaj go później – także na innym serwerze: `/stworz projekt:<plik>` |
 | 🧹 **Czyszczenie serwera `/usun`** | usuwa wybrane elementy: kanały i kategorie, role, AutoMod, wydarzenia, emoji i naklejki, zaproszenia, bany, ustawienia – tylko właściciel, z potwierdzeniem nazwą serwera i paskiem postępu |
 | ♻️ **Kopia zapasowa i przywracanie** | przed czyszczeniem bot wysyła plik kopii (także w wiadomości prywatnej); `/stworz projekt:<kopia>` odtwarza role, kanały, uprawnienia i AutoMod 1:1 |
+| 🧭 **Onboarding Discorda** | pytania przy wejściu na serwer („W co grasz?”, „Jaki kolor nicku?”, „Jakie powiadomienia?”, platformy, wiek, region) – **Discord sam nadaje role i pokazuje kanały**, bez żadnego bota; wybór gry odsłania jej kanały |
+| 🏷️ **Wiadomości jako serwer** | regulamin, informacje i FAQ przychodzą z **nazwą i logo serwera** (przez webhooki, usuwane po budowie) – po wyrzuceniu bota nic nie zdradza, kto zbudował serwer |
+| 🏞️ **Banery** | grafika z tytułem w kolorach serwera nad regulaminem, informacjami, FAQ, opisem ról, powitaniem… |
+| 🖼️ **Logo i ikona** | logo wgrywasz plikiem prosto w formularzu (albo linkiem); bez logo – ikona z inicjałów nazwy w kolorze serwera |
+| 😀 **Paczka emoji serwera** | statusy (online/zaraz/zajęty/offline), ✔ ✖ ⚠ ℹ, strzałka, kropka i odznaki pod typ serwera (np. GG, MVP, MC, PVP, NEW, HOT, VIP) – w kolorze serwera |
+| 🤖 **Popularne boty** | 22 boty (MEE6, Arcane, Dyno, Carl-bot, ProBot, Ticket Tool, Double Counter, Captcha.bot, Wick, Jockie Music, DISBOARD, GiveawayBot, Sesh, Dank Memer…) – kreator tworzy pod nie kanały (#awanse, #tickety, #bump, #gry-botów…) i rolę „Boty”, a po budowie daje **linki „Dodaj bota” z wybranym serwerem** i instrukcję, co ustawić |
+| 📘 **Przewodnik po budowie** | w wiadomości prywatnej (z linkami do botów i obrazkiem serwera) i na kanale ekipy: co ustawić dalej, weryfikacja, onboarding, emoji |
+| 🖼️ **Podgląd obrazkiem** | obrazek jak w Discordzie: kanały z ikonami i dostępem, role w kolorach, statystyki – przed budową i do Twojego portfolio/reklam |
+| 🚪 **Bot wychodzi po budowie** | opcjonalnie: od razu albo po 2 godzinach (gdy minie czas na cofnięcie) – plan przetrwa restart bota |
+| 📦 **Szablony i pakiety** | projektujesz serwer raz i zapisujesz jako szablon; kod może otwierać szablon i/lub ograniczać funkcje pakietem (Podstawowy / Standard / Premium) |
+| ⏳ **Ważność kodów i powiadomienia** | kody z terminem ważności; powiadomienia o użyciu kodu, budowie, cofnięciu i wyjściu bota na Twoim kanale |
 | ⚡ **Szybki kreator** | tylko 4 pytania (typ, nazwa, język/rozmiar, sekcje) – resztę bot dobiera sam |
 | 📁 **Własne kanały** | w nowej kategorii albo dorzucone do istniejącej sekcji (np. dodatkowe kanały w „Społeczności”) |
 | 👁️ **Podsumowanie i podgląd** | pełna lista kanałów i ról przed budową, szacowany czas |
@@ -84,7 +101,12 @@ Jest przygotowany do **sprzedaży gotowych serwerów**: `/stworz` działa dopier
 3. W zakładce **Startup** ustaw plik startowy (*JS file / Main file*) na **`index.js`**.
    ⚠️ Nie ustawiaj tam `start.sh` ani `start.bat` – to skrypty dla komputera, nie pliki JavaScript.
 4. Wersja Node.js: **18.17 lub nowsza** (obraz `nodejs_18`, `nodejs_19`, `nodejs_20`… – wszystkie działają).
-5. Uruchom serwer. Jeśli panel nie zainstaluje zależności sam, `index.js` zrobi to przy pierwszym starcie.
+5. Uruchom serwer. Jeśli panel nie zainstaluje zależności sam, `index.js` zrobi to przy pierwszym starcie
+   (także po aktualizacji – brakujące biblioteki doinstaluje sam).
+
+> 🖼️ Grafika (podgląd, banery, ikony, emoji) używa biblioteki `@napi-rs/canvas` z własną czcionką (DejaVu Sans) i emoji Twemoji –
+> nie potrzebuje niczego z systemu. Zależności zajmują ok. 70 MB. Jeśli hosting nie obsłuży biblioteki graficznej,
+> bot działa dalej bez obrazków (w konsoli zobaczysz „Grafika: wyłączona”).
 
 > Jeśli wolisz trzymać bota w podfolderze (np. `kreator-serwera/`), ustaw plik startowy na `kreator-serwera/index.js` –
 > bot sam zainstaluje zależności, a `.env` może leżeć w podfolderze albo w `/home/container`.
@@ -110,7 +132,14 @@ w polu pod konsolą (tam, gdzie widać logi bota), lokalnie – w oknie, w któr
 | `info <kod>` | status, notatka, serwer, na którym użyto kodu, historia budów |
 | `anuluj <kod>` | unieważnia kod (także jeśli już jest przypisany do serwera) |
 | `dodaj <kod> [ile]` | dodaje budowy do kodu (np. klient dokupił kolejną) |
+| `kod pakiet=standard` | kod z pakietem (`basic`, `standard`, `premium` – bez pakietu = premium) |
+| `kod szablon=mc-premium` | kod otwierający gotowy szablon (klient buduje go jednym kliknięciem) |
+| `kod dni=30` | kod ważny 30 dni (opcje można łączyć: `kod 3 1 pakiet=premium szablon=mc-premium dni=14 Jan #12`) |
+| `waznosc <kod> <dni\|bez>` | zmienia termin ważności kodu |
+| `pakiety` | co zawiera każdy pakiet |
+| `szablony` / `szablon info <id>` / `szablon usun <id>` | lista szablonów / szczegóły / usunięcie |
 | `serwery` / `wyjdz <id>` | serwery z botem / bot opuszcza serwer |
+| `wyjscia` / `zostan <id>` | zaplanowane wyjścia bota / odwołanie wyjścia |
 | `status` / `pomoc` / `stop` | stan bota / lista komend / wyłączenie bota |
 
 **Jak to działa dla kupującego:**
@@ -122,7 +151,29 @@ w polu pod konsolą (tam, gdzie widać logi bota), lokalnie – w oknie, w któr
 **Zabezpieczenia:** kod ma 20 znaków (ok. 10³⁰ kombinacji), po 5 błędnych próbach w 15 minut wpisywanie jest blokowane na 15 minut,
 każda próba jest zapisywana w konsoli. Przywrócenie kopii zapasowej przez `/stworz` też wymaga kodu. **`/usun` działa zawsze, bez kodu.**
 
-Kody są zapisywane w pliku **`data/kody.json`** w folderze bota. ⚠️ **Przy aktualizacji bota nie usuwaj folderu `data/`** –
+#### 📦 Pakiety
+
+| Pakiet | Kreator | Dodatki |
+|---|---|---|
+| 🥉 `basic` – Podstawowy | szybki (4 pytania) + tryb budowy; bez wczytywania projektów | wiadomości jako serwer, przewodnik, podgląd |
+| 🥈 `standard` – Standard | pełny (19 kroków), wczytywanie projektów | + kanały i linki pod popularne boty, ikona z inicjałów |
+| 🥇 `premium` – Premium | pełny | + onboarding Discorda, banery, paczka emoji |
+
+Zablokowane funkcje kupujący widzi z oznaczeniem „🔒 pakiet …” – a przed budową są dodatkowo wyłączane po stronie bota.
+
+#### 📦 Szablony (gotowe serwery)
+1. Jako **sprzedawca** (właściciel aplikacji bota albo osoba z `SELLER_IDS`) wpisz `/stworz` – **nie potrzebujesz kodu**.
+2. Zaprojektuj serwer i w podsumowaniu kliknij **📦 Zapisz jako szablon** (ID, nazwa, opis dla klienta).
+3. W konsoli: `kod szablon=<id>` (np. `kod pakiet=basic szablon=mc-premium`).
+4. Klient po wpisaniu kodu widzi od razu **gotowy szablon** – ustawia tylko nazwę, opis i logo, wybiera tryb budowy i klika **Zbuduj serwer**.
+   Z pakietem Standard/Premium może też dopasować szablon w dowolnym kroku (poza typem serwera).
+
+#### 🔔 Powiadomienia dla sprzedawcy
+Ustaw w `.env` **`NOTIFY_WEBHOOK_URL`** (webhook kanału na Twoim serwerze: Ustawienia kanału → Integracje → Webhooki → Kopiuj URL)
+albo **`NOTIFY_CHANNEL_ID`** (kanał na serwerze, na którym jest bot). Dostaniesz wiadomość, gdy ktoś wpisze kod (kto, serwer, pakiet, szablon),
+gdy serwer zostanie zbudowany (statystyki, czas, uwagi), cofnięty albo gdy bot opuści serwer.
+
+Kody są zapisywane w pliku **`data/kody.json`** w folderze bota (szablony w `data/szablony/`, zaplanowane wyjścia bota w `data/wyjscia.json`). ⚠️ **Przy aktualizacji bota nie usuwaj folderu `data/`** –
 są w nim sprzedane kody (plik nie jest częścią ZIP-a, więc wgranie nowej wersji go nie nadpisze).
 Do testów na własnym serwerze możesz wyłączyć kody w `.env`: `REQUIRE_CODE=false`.
 
@@ -139,22 +190,25 @@ Wpisz **`/stworz`** na serwerze (komenda jest widoczna tylko dla administratoró
 | Krok | Pytania |
 |---|---|
 | 1. 🧭 Typ serwera | do czego służy serwer (ustawia mądre wartości startowe) |
-| 2. 📝 Nazwa i opis | nazwa, opis i cel, grupa docelowa, ikona, czy zmienić nazwę serwera |
+| 2. 📝 Nazwa i opis | nazwa, opis i cel, grupa docelowa, **logo (plik lub link)**, czy zmienić nazwę serwera |
 | 3. 🌍 Język, rozmiar, wiek | PL/EN, mały–ogromny, 13+/16+/18+ |
 | 4. 🎨 Wygląd | styl kanałów, styl kategorii, paleta kolorów ról, separatory, emoji w rolach |
 | 5. 🧩 Sekcje | trzy menu z 31 sekcjami serwera |
 | 6. ⭐ Kanały specjalne | lista elementów (gry/przedmioty/działy…), układ, co utworzyć dla każdego elementu, kanały specjalne, dodatkowe informacje (IP, linki, płatności…) |
 | 7. 🛡️ Administracja | role ekipy + własne role z poziomem uprawnień, zmiana nazw głównych ról |
 | 8. 🎭 Role społeczności | grupy ról + własne role specjalne i dla członków |
-| 9. 🔐 Uprawnienia | co mogą członkowie (pliki, linki, wątki, kamera…), domyślne powiadomienia |
-| 10. 🔑 Dostęp do kanałów | dla każdej sekcji: kto widzi (wszyscy / także przed weryfikacją / VIP / ekipa / zarząd) i kto pisze lub mówi (wszyscy / tylko odczyt / tylko wątki) |
-| 11. 🛡️ Bezpieczeństwo | poziom weryfikacji Discorda, filtr multimediów, reguły AutoMod (działają bez bota) |
-| 12. 🔊 Kanały | slowmode, liczba lobby głosowych, kanały z limitem, czas AFK |
-| 13. 📁 Własne kanały | nowe kategorie albo kanały w istniejących sekcjach, z wybranym dostępem |
-| 14. 📨 Wiadomości | co bot ma opublikować, tryb Społeczności, kolor wiadomości |
-| 15. 📜 Regulamin i treści | paragrafy regulaminu, system kar, własne zasady, własne FAQ, pierwsze ogłoszenie |
-| 16. ⚙️ Tryb budowy | dodaj do obecnej struktury / wyczyść i zbuduj od nowa, nadanie ról |
-| 📋 Podsumowanie | statystyki, uwagi, podgląd kanałów i ról, **Zapisz projekt**, **Zbuduj serwer** |
+| 9. 🧭 Onboarding Discorda | włączyć?, o co pytać (gry/tryby, powiadomienia, kolor, platformy, wiek, zaimki, region, własne role), czy pytania są obowiązkowe |
+| 10. 🔐 Uprawnienia | co mogą członkowie (pliki, linki, wątki, kamera…), domyślne powiadomienia |
+| 11. 🔑 Dostęp do kanałów | dla każdej sekcji: kto widzi (wszyscy / także przed weryfikacją / VIP / ekipa / zarząd) i kto pisze lub mówi (wszyscy / tylko odczyt / tylko wątki) |
+| 12. 🛡️ Bezpieczeństwo | poziom weryfikacji Discorda, filtr multimediów, reguły AutoMod (działają bez bota) |
+| 13. 🔊 Kanały | slowmode, liczba lobby głosowych, kanały z limitem, czas AFK |
+| 14. 📁 Własne kanały | nowe kategorie albo kanały w istniejących sekcjach, z wybranym dostępem |
+| 15. 🤖 Popularne boty | 22 boty w dwóch menu – kreator doda pod nie kanały i rolę „Boty” |
+| 16. 📨 Wiadomości | co bot ma opublikować, tryb Społeczności, kolor wiadomości |
+| 17. 🎨 Grafika i nadawca | wiadomości jako serwer / jako bot, banery, ikona z inicjałów, paczka emoji, **podgląd serwera** i przykładowy baner |
+| 18. 📜 Regulamin i treści | paragrafy regulaminu, system kar, własne zasady, własne FAQ, pierwsze ogłoszenie |
+| 19. ⚙️ Tryb budowy | dodaj / wyczyść i zbuduj od nowa, nadanie ról, **co bot robi po budowie** (zostaje / wychodzi po 2 h / od razu), przewodnik w DM |
+| 📋 Podsumowanie | statystyki, uwagi, podgląd kanałów i ról, **🖼️ podgląd obrazkiem**, **Zapisz projekt**, **Zbuduj serwer** (sprzedawca: **Zapisz jako szablon**) |
 
 Na każdym etapie możesz przejść od razu do **Podsumowania** – pozostałe odpowiedzi zostaną uzupełnione zalecanymi ustawieniami.
 Z podsumowania wrócisz do dowolnego kroku przez menu „Zmień odpowiedź w kroku…”.
@@ -245,6 +299,10 @@ Nawet przy własnych ustawieniach kanał weryfikacji, regulamin (przy weryfikacj
 | `/stworz` prosi o kod | Tak ma być – wygeneruj kod w konsoli bota komendą `kod`. Do testów możesz wyłączyć kody: `REQUIRE_CODE=false`. |
 | Konsola nie reaguje na `kod` | Wpisuj komendy w polu pod konsolą na Wispbyte (bot musi być uruchomiony). Lista komend: `pomoc`. |
 | „Baza kodów jest niedostępna” | Plik `data/kody.json` jest uszkodzony – przywróć go z kopii (bot nie nadpisze uszkodzonego pliku). |
+| „Onboarding pominięty” w podsumowaniu | Onboarding wymaga trybu Społeczności, **nie działa z sekcją „Weryfikacja”** i potrzebuje min. 7 kanałów widocznych dla wszystkich (5 z pisaniem). Powód jest w uwagach. |
+| W konsoli „Grafika: wyłączona” | Hosting nie wczytał `@napi-rs/canvas` – uruchom ponownie (`index.js` doinstaluje brakujące biblioteki). Bot działa dalej, tylko bez obrazków. |
+| Nie widzę „Zapisz jako szablon” | Ten przycisk widzi tylko sprzedawca – ustaw swoje ID w `SELLER_IDS` (albo bądź właścicielem aplikacji bota). |
+| Boty z listy nie dołączyły same | Discord nie pozwala dodać bota bez kliknięcia „Autoryzuj” – użyj przycisków „Dodaj …” z panelu lub przewodnika. |
 | Hosting: `SyntaxError: Invalid or unexpected token` w `start.sh` | Jako plik startowy ustaw **`index.js`**, a nie `start.sh`. |
 | Hosting: `Cannot find module 'discord.js'` | Ustaw plik startowy na `index.js` – doinstaluje zależności sam – albo wgraj pliki do katalogu głównego. |
 | Panel przestał się odświeżać przy bardzo dużym serwerze | Budowa trwa dalej w tle; podsumowanie trafi na kanał ekipy i w wiadomości prywatnej. |
@@ -264,9 +322,12 @@ kreator-serwera/
 │   │   ├── panel.js            # panel czyszczenia (wybór, potwierdzenie, postęp, raport)
 │   │   ├── cleaner.js          # silnik czyszczenia
 │   │   └── snapshot.js         # kopia zapasowa serwera i jej wczytywanie
+│   ├── graphics/               # obrazki: podgląd serwera, banery, ikona, paczka emoji
 │   ├── wizard/                 # panel kreatora
-│   │   ├── router.js           # ekrany i nawigacja
-│   │   ├── steps.js            # 16 kroków z pytaniami
+│   │   ├── router.js           # ekrany i nawigacja (kody, pakiety, szablony, podgląd)
+│   │   ├── steps.js            # kroki z pytaniami (+ stepsExtra.js: onboarding, boty, grafika)
+│   │   ├── guide.js            # przewodnik po budowie
+│   │   ├── leave.js            # zaplanowane wyjście bota z serwera
 │   │   ├── project.js          # zapis i wczytywanie projektu (JSON)
 │   │   ├── undo.js             # cofanie budowy
 │   │   ├── defaults.js         # zalecane odpowiedzi zależne od typu i rozmiaru
@@ -280,8 +341,8 @@ kreator-serwera/
 │   │   ├── executor.js         # tworzenie wszystkiego na serwerze
 │   │   ├── content.js          # regulamin, informacje, opis ról, FAQ…
 │   │   └── naming.js           # style nazw, parsowanie list i kolorów
-│   ├── data/                   # katalogi: typy serwerów, moduły, role, style, AutoMod
-│   ├── access/                 # kody dostępu (codes.js) i komendy konsoli (console.js)
+│   ├── data/                   # katalogi: typy serwerów, moduły, role, style, AutoMod, popularne boty (bots.js)
+│   ├── access/                 # kody, pakiety, szablony, powiadomienia, komendy konsoli
 │   └── utils/                  # logger, tłumaczenia PL/EN
 ├── test/                       # testy (atrapa Discorda – bez tokenu)
 ├── .env.example
@@ -299,10 +360,14 @@ Testy nie łączą się z Discordem – używają atrapy serwera, która sprawdz
 (długości nazw, 50 kanałów na kategorię, 500 kanałów, 250 ról, limity embedów i komponentów, wymagania trybu Społeczności, reguły AutoMod).
 Symulują pełne przejście kreatora dla każdego typu serwera i pełną budowę w trybie dodawania i czyszczenia,
 a także `/usun` (każda opcja, przerwanie, blokady, tylko właściciel), kopię zapasową z przywróceniem 1:1
-oraz kody dostępu (generowanie, konsola, wpisywanie kodu, zużycie i zwrot przy cofnięciu, limit prób).
+oraz kody dostępu (generowanie, konsola, wpisywanie kodu, zużycie i zwrot przy cofnięciu, limit prób),
+pakiety, szablony, onboarding (z wymaganiami Discorda), webhooki, banery, ikonę, paczkę emoji, przewodnik i wyjście bota.
 
 ---
 
 ## 📄 Licencja
 
 MIT – możesz dowolnie używać i modyfikować.
+
+Grafiki emoji: [Twemoji](https://github.com/jdecked/twemoji) © Twitter/X i współtwórcy – licencja CC-BY 4.0.
+Czcionka: [DejaVu Sans](https://dejavu-fonts.github.io/) – wolna licencja (Bitstream Vera / Arev).

@@ -2,6 +2,7 @@
 
 const readline = require('node:readline');
 const { formatCode, normalizeCode, MAX_BATCH, MAX_USES } = require('./codes');
+const { PACKAGES, FEATURES, packageOf } = require('./packages');
 
 /**
  * Komendy wpisywane w konsoli bota (na Wispbyte/Pterodactyl: pole „Type a command…” pod konsolą).
@@ -14,10 +15,16 @@ const HELP = [
   '│ kod 5                  – 5 kodów naraz',
   '│ kod 1 3                – 1 kod na 3 budowy',
   '│ kod 1 1 Jan Kowalski   – kod z notatką (np. dla kogo / nr zamówienia)',
+  '│   opcje do „kod”:  pakiet=basic|standard|premium  szablon=<id>  dni=30',
+  '│   np. kod pakiet=premium szablon=mc-premium dni=14 Jan #12',
   '│ kody                   – aktywne kody   │ kody wszystkie – także zużyte i anulowane',
   '│ info <kod>             – szczegóły i historia użyć kodu',
   '│ anuluj <kod>           – unieważnia kod (także na przypisanym serwerze)',
   '│ dodaj <kod> [ile]      – dodaje budowy do kodu (domyślnie 1)',
+  '│ waznosc <kod> <dni|bez> – zmienia termin ważności kodu',
+  '│ pakiety                – co zawiera każdy pakiet',
+  '│ szablony               – zapisane szablony │ szablon info|usun <id>',
+  '│ wyjscia                – zaplanowane wyjścia bota │ zostan <id serwera> – odwołuje',
   '│ serwery                – serwery, na których jest bot',
   '│ wyjdz <id serwera>     – bot opuszcza serwer',
   '│ status                 – stan bota',
@@ -39,6 +46,10 @@ function codeBox(records) {
   out.push(line());
   const r0 = records[0];
   out.push(line(`Każdy kod: ${r0.uses} ${budowy(r0.uses)} serwera`));
+  const pkg = packageOf(r0.package);
+  out.push(line(`Pakiet: ${pkg.label}${r0.package ? '' : ' (domyślny)'}`));
+  if (r0.template) out.push(line(`Szablon: ${r0.template}`));
+  if (r0.expiresAt) out.push(line(`Ważny do: ${date(r0.expiresAt)}`));
   if (r0.note) out.push(line(`Notatka: ${r0.note.slice(0, width - 14)}`));
   out.push(line('Kupujący wpisuje kod po użyciu /stworz'));
   out.push(`╚${'═'.repeat(width - 2)}╝`);
@@ -49,7 +60,7 @@ function codeBox(records) {
  * Wykonuje jedną komendę konsoli. Zwraca { lines, stop } – czysta funkcja (łatwa do testów).
  * ctx: { codes, client?, store? }
  */
-async function runCommand(input, { codes, client, store }) {
+async function runCommand(input, { codes, client, store, templates = null, leaver = null }) {
   const line = String(input || '').trim();
   if (!line) return { lines: [] };
   const [rawCmd, ...args] = line.split(/\s+/);
@@ -61,15 +72,28 @@ async function runCommand(input, { codes, client, store }) {
         return { lines: HELP };
 
       case 'kod': case 'generuj': case 'nowykod': {
-        // kod [ilość] [budowy] [notatka…] – liczby tylko na początku, reszta to notatka.
+        // kod [ilość] [budowy] [pakiet=…] [szablon=…] [dni=…] [notatka…] – liczby tylko na początku.
+        const opts = {};
+        const rest = [];
+        for (const a of args) {
+          const m = a.match(/^(pakiet|p|szablon|s|dni|d|waznosc)=(.*)$/i);
+          if (m) opts[{ p: 'pakiet', s: 'szablon', d: 'dni', waznosc: 'dni' }[m[1].toLowerCase()] || m[1].toLowerCase()] = m[2];
+          else rest.push(a);
+        }
         const nums = [];
         let i = 0;
-        while (i < args.length && nums.length < 2 && /^\d+$/.test(args[i])) nums.push(Number(args[i++]));
+        while (i < rest.length && nums.length < 2 && /^\d+$/.test(rest[i])) nums.push(Number(rest[i++]));
         const [count = 1, uses = 1] = nums;
-        const note = args.slice(i).join(' ');
+        const note = rest.slice(i).join(' ');
         if (count < 1 || count > MAX_BATCH) return { lines: [`✖ Ilość kodów: 1–${MAX_BATCH}.`] };
         if (uses < 1 || uses > MAX_USES) return { lines: [`✖ Liczba budów na kod: 1–${MAX_USES}.`] };
-        return { lines: codeBox(codes.generate({ count, uses, note })) };
+        const pkg = opts.pakiet ? opts.pakiet.toLowerCase() : null;
+        if (pkg && !PACKAGES[pkg]) return { lines: [`✖ Nie ma pakietu „${opts.pakiet}”. Dostępne: ${Object.keys(PACKAGES).join(', ')}.`] };
+        const template = opts.szablon ? opts.szablon.toLowerCase() : null;
+        if (template && !templates?.exists(template)) return { lines: [`✖ Nie ma szablonu „${opts.szablon}”. Lista: szablony.`] };
+        const days = opts.dni !== undefined ? Number(opts.dni) : null;
+        if (days !== null && (!Number.isInteger(days) || days < 1 || days > 3650)) return { lines: ['✖ Ważność: dni=1–3650.'] };
+        return { lines: codeBox(codes.generate({ count, uses, note, pkg, template, days })) };
       }
 
       case 'kody': case 'lista': {
@@ -80,7 +104,8 @@ async function runCommand(input, { codes, client, store }) {
         lines.push(`  ${pad('KOD', 23)}  ${pad('STATUS', 16)}  ${pad('UŻYCIA', 6)}  ${pad('UTWORZONY', 17)}  NOTATKA / SERWER`);
         for (const r of list) {
           const where = r.boundGuilds.length ? `serwer ${r.boundGuilds.join(', ')}` : '';
-          lines.push(`  ${formatCode(r.code)}  ${pad(r.status, 16)}  ${pad(`${r.used}/${r.uses}`, 6)}  ${pad(date(r.createdAt), 17)}  ${[r.note, where].filter(Boolean).join(' • ')}`);
+          const extra = [r.package ? `pakiet ${r.package}` : null, r.template ? `szablon ${r.template}` : null, r.expiresAt ? `do ${date(r.expiresAt)}` : null];
+          lines.push(`  ${formatCode(r.code)}  ${pad(r.status, 16)}  ${pad(`${r.used}/${r.uses}`, 6)}  ${pad(date(r.createdAt), 17)}  ${[...extra, r.note, where].filter(Boolean).join(' • ')}`);
         }
         return { lines };
       }
@@ -94,6 +119,9 @@ async function runCommand(input, { codes, client, store }) {
           `  Status:     ${r.status}${r.revokedAt ? ` (${date(r.revokedAt)})` : ''}`,
           `  Użycia:     ${r.used}/${r.uses} (pozostało ${r.remaining})`,
           `  Utworzony:  ${date(r.createdAt)}`,
+          `  Pakiet:     ${packageOf(r.package).label}${r.package ? '' : ' (domyślny)'}`,
+          r.template ? `  Szablon:    ${r.template}` : null,
+          `  Ważność:    ${r.expiresAt ? date(r.expiresAt) : 'bez terminu'}`,
           r.note ? `  Notatka:    ${r.note}` : null,
           r.boundGuilds.length ? `  Przypisany: serwer ${r.boundGuilds.join(', ')}` : null,
           r.lastRedeem ? `  Wpisany:    ${date(r.lastRedeem.at)} na „${r.lastRedeem.guildName}” (${r.lastRedeem.guildId}) przez ${r.lastRedeem.userId}` : null,
@@ -116,6 +144,67 @@ async function runCommand(input, { codes, client, store }) {
         const n = args[1] && /^\d+$/.test(args[1]) ? Number(args[1]) : 1;
         const r = codes.addUses(args[0], n);
         return { lines: [r ? `✔ Kod ${formatCode(r.code)}: teraz ${r.used}/${r.uses} użyć (pozostało ${r.uses - r.used}).` : '✖ Nie znaleziono takiego kodu.'] };
+      }
+
+      case 'waznosc': case 'wazny': {
+        if (!args[0] || !args[1]) return { lines: ['Użycie: waznosc <kod> <dni|bez>'] };
+        const none = ['bez', 'brak', '0', 'nigdy'].includes(args[1].toLowerCase());
+        const days = Number(args[1]);
+        if (!none && (!Number.isInteger(days) || days < 1 || days > 3650)) return { lines: ['✖ Podaj liczbę dni (1–3650) albo „bez”.'] };
+        const r = codes.setExpiry(args[0], none ? null : days);
+        if (!r) return { lines: ['✖ Nie znaleziono takiego kodu.'] };
+        return { lines: [`✔ Kod ${formatCode(r.code)}: ${r.expiresAt ? `ważny do ${date(r.expiresAt)}` : 'bez terminu ważności'}.`] };
+      }
+
+      case 'pakiety': {
+        const lines = ['Pakiety (wybierasz przy generowaniu: kod pakiet=…):'];
+        for (const p of Object.values(PACKAGES)) {
+          lines.push(`  ${p.emoji} ${pad(p.key, 9)} ${p.label} – ${p.description}`);
+          lines.push(`     kreator: ${p.full ? 'pełny (19 kroków)' : 'szybki (4 pytania + tryb budowy)'} • import projektu: ${p.import ? 'tak' : 'nie'}`);
+          lines.push(`     dodatki: ${p.features.map((f) => FEATURES[f].label).join(', ') || 'brak'}`);
+        }
+        lines.push('  Kod bez pakietu = premium. Wiadomości jako serwer, przewodnik i podgląd są w każdym pakiecie.');
+        return { lines };
+      }
+
+      case 'szablony': {
+        const list = templates?.list() || [];
+        if (!list.length) return { lines: ['Brak szablonów. Zaprojektuj serwer w /stworz (jako właściciel bota) i kliknij „Zapisz jako szablon” w podsumowaniu.'] };
+        return {
+          lines: [`Szablony (${list.length}):`, ...list.map((t) => `  ${pad(t.id, 24)} ${pad(t.name, 28)} ${t.stats ? `${t.stats.channels} kan. • ${t.stats.roles} ról` : ''}  budowy: ${t.uses}`)],
+        };
+      }
+
+      case 'szablon': {
+        const [sub, id] = args;
+        if (!templates || !['info', 'usun'].includes((sub || '').toLowerCase().replace('ń', 'n')) || !id) return { lines: ['Użycie: szablon info <id> | szablon usun <id>'] };
+        const t = templates.get(id);
+        if (!t) return { lines: [`✖ Nie ma szablonu „${id}”.`] };
+        if (sub.toLowerCase().startsWith('us')) {
+          templates.delete(t.id);
+          return { lines: [`✔ Szablon „${t.name}” (${t.id}) usunięty. Kody z tym szablonem przestaną działać.`] };
+        }
+        return {
+          lines: [
+            `Szablon ${t.id} – ${t.name}`,
+            t.description ? `  Opis:      ${t.description}` : null,
+            `  Typ:       ${t.type || '—'}`,
+            t.stats ? `  Struktura: ${t.stats.categories} kategorii, ${t.stats.channels} kanałów, ${t.stats.roles} ról` : null,
+            `  Zapisany:  ${date(t.updatedAt || t.createdAt)} • budowy z szablonu: ${t.uses || 0}`,
+            `  Kod:       kod szablon=${t.id}`,
+          ].filter(Boolean),
+        };
+      }
+
+      case 'wyjscia': {
+        const list = leaver?.list() || [];
+        if (!list.length) return { lines: ['Brak zaplanowanych wyjść bota.'] };
+        return { lines: ['Zaplanowane wyjścia bota:', ...list.map((w) => `  ${w.guildId}  ${pad((w.guildName || '').slice(0, 30), 30)}  ${date(new Date(w.at).toISOString())}`)] };
+      }
+
+      case 'zostan': {
+        if (!args[0]) return { lines: ['Użycie: zostan <id serwera> – odwołuje zaplanowane wyjście bota.'] };
+        return { lines: [leaver?.cancel(args[0]) ? '✔ Wyjście odwołane – bot zostaje na serwerze.' : '✖ Nie ma zaplanowanego wyjścia dla tego serwera.'] };
       }
 
       case 'serwery': {
@@ -162,11 +251,11 @@ async function runCommand(input, { codes, client, store }) {
 }
 
 /** Nasłuchuje komend na standardowym wejściu (konsola hostingu / terminal). */
-function startConsole({ codes, client, store, onStop, output = console.log }) {
+function startConsole({ codes, client, store, templates, leaver, onStop, output = console.log }) {
   if (!process.stdin || process.stdin.destroyed) return null;
   const rl = readline.createInterface({ input: process.stdin, terminal: false });
   rl.on('line', async (line) => {
-    const { lines, stop } = await runCommand(line, { codes, client, store });
+    const { lines, stop } = await runCommand(line, { codes, client, store, templates, leaver });
     for (const l of lines) output(l);
     if (stop) onStop?.();
   });

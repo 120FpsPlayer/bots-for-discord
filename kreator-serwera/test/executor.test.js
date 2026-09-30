@@ -140,7 +140,8 @@ test('uprawnienia kanałów trafiają na serwer jako bity z poprawnymi ID ról',
 test('wiadomości: regulamin, opis ról, forum propozycji – sam tekst, bez żadnych przycisków (bot nie jest potrzebny po budowie)', async () => {
   const { guild, result } = await build('gaming', { tweak: (a) => { a.modules.push('verification', 'suggestions'); } });
   const msg = (key) => guild.channels.cache.get(result.channels[key]).messages;
-  assert.ok(msg('rules')[0].embeds[0].toJSON().fields.length >= 5, 'regulamin ma paragrafy');
+  const rules = msg('rules').filter((m) => m.embeds.length);
+  assert.ok(rules[0].embeds[0].toJSON().fields.length >= 5, 'regulamin ma paragrafy');
   assert.equal(msg('verify').length, 0, '#weryfikacja zostaje pusty – panel publikuje bot kupującego');
   const roleInfo = msg('roleinfo');
   assert.ok(roleInfo.length >= 1, 'opis ról opublikowany');

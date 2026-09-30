@@ -1,7 +1,7 @@
 'use strict';
 
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, LabelBuilder, ModalBuilder,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, FileUploadBuilder, LabelBuilder, ModalBuilder,
   StringSelectMenuBuilder, TextInputBuilder, TextInputStyle,
 } = require('discord.js');
 
@@ -102,7 +102,14 @@ function modal(customId, title, fields) {
   const labels = fields.slice(0, 5).map((f) => {
     const label = new LabelBuilder().setLabel(clip(f.label, 45));
     if (f.description) label.setDescription(clip(f.description, 100));
-    if (f.select) {
+    if (f.upload) {
+      // Wgrywanie pliku prosto w formularzu (np. logo serwera).
+      label.setFileUploadComponent(new FileUploadBuilder()
+        .setCustomId(f.id)
+        .setMinValues(f.upload.min ?? 0)
+        .setMaxValues(f.upload.max ?? 1)
+        .setRequired(Boolean(f.required)));
+    } else if (f.select) {
       const menu = new StringSelectMenuBuilder()
         .setCustomId(f.id)
         .setMinValues(f.select.min ?? 1)
@@ -140,6 +147,16 @@ function modalText(interaction, id) {
   }
 }
 
+/** Pliki wgrane w formularzu (tablica załączników; pusta, gdy nic nie wgrano). */
+function modalFiles(interaction, id) {
+  try {
+    const files = interaction.fields.getUploadedFiles(id);
+    return files ? [...files.values()] : [];
+  } catch {
+    return [];
+  }
+}
+
 function modalSelect(interaction, id) {
   try {
     return interaction.fields.getStringSelectValues(id) ?? [];
@@ -173,5 +190,6 @@ module.exports = {
   modal,
   modalText,
   modalSelect,
+  modalFiles,
   formatDuration,
 };

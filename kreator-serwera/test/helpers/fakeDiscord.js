@@ -7,7 +7,10 @@
  * z kodami API, dzięki czemu testy wyłapują realne problemy.
  */
 
-const { ChannelType, Collection, PermissionsBitField, OverwriteType } = require('discord.js');
+const { ChannelType, Collection, PermissionsBitField, PermissionFlagsBits, OverwriteType } = require('discord.js');
+
+const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
+const isPng = (buf) => Buffer.isBuffer(buf) && buf.subarray(0, 4).equals(PNG_SIGNATURE);
 
 let seq = 100000000000000000n;
 const nextId = () => String(++seq);
@@ -57,7 +60,15 @@ function embedLength(e) {
 
 function validateMessage(body) {
   const embeds = body.embeds || [];
+  const files = body.files || [];
   if (embeds.length > 10) throw apiError(50035, 'too many embeds');
+  if (files.length > 10) throw apiError(50035, 'too many files');
+  for (const f of files) {
+    if (!isPng(f.attachment)) throw apiError(50035, `file ${f.name} is not a PNG`);
+    if (!/^[\w.-]+\.png$/.test(f.name || '')) throw apiError(50035, `bad file name ${f.name}`);
+    if (f.attachment.length > 10 * 1024 * 1024) throw apiError(40005, 'file too large');
+  }
+  if (!embeds.length && !files.length && !body.content) throw apiError(50006, 'Cannot send an empty message');
   let total = 0;
   for (const e of embeds) {
     const { n, d } = embedLength(e);
@@ -120,9 +131,12 @@ class FakeRole {
 }
 
 class FakeMessage {
-  constructor(channel, body) {
+  constructor(channel, body, author = 'bot') {
     this.id = nextId();
     this.channel = channel;
+    this.channelId = channel.id;
+    this.author = author;
+    this.files = body.files || [];
     this.embeds = body.embeds || [];
     this.components = body.components || [];
     this.content = body.content;
@@ -169,15 +183,35 @@ class FakeChannel {
       async create({ name, message }) {
         if (channel.type !== ChannelType.GuildForum) throw apiError(50024, 'not a forum');
         validateMessage(message);
-        const thread = { name, message, pinned: false, async pin() { thread.pinned = true; } };
-        channel.threadsCreated.push(thread);
-        return thread;
+        return channel.addThread(name, message);
       },
     };
   }
 
   get parent() {
     return this.parentId ? this.guild.channels.cache.get(this.parentId) : null;
+  }
+
+  addThread(name, message) {
+    if (this.type !== ChannelType.GuildForum) throw apiError(50024, 'not a forum');
+    const thread = { id: nextId(), name, message, pinned: false, parentId: this.id, async pin() { thread.pinned = true; return thread; }, isThread: () => true };
+    this.threadsCreated.push(thread);
+    this.guild.threads.set(thread.id, thread);
+    return thread;
+  }
+
+  /** Czy @everyone może pisać na kanale (do wymagań onboardingu). */
+  everyoneCanSend() {
+    const everyone = this.guild.roles.everyone;
+    let can = everyone.permissions.has(PermissionFlagsBits.SendMessages);
+    const ow = this.permissionOverwrites.find((o) => o.id === this.guild.id);
+    if (ow) {
+      const bits = (v) => (typeof v === 'bigint' ? v : new PermissionsBitField(v ?? 0n).bitfield);
+      if (bits(ow.deny) & PermissionFlagsBits.SendMessages) can = false;
+      if (bits(ow.allow) & PermissionFlagsBits.SendMessages) can = true;
+      if (bits(ow.deny) & PermissionFlagsBits.ViewChannel) can = false;
+    }
+    return can;
   }
 
   isThread() {
@@ -190,6 +224,7 @@ class FakeChannel {
 
   async delete() {
     if (this.guild.protectedChannels.has(this.id)) throw apiError(50074, 'Cannot delete a channel required for Community Servers');
+    if (this.guild.onboarding?.enabled && this.guild.onboarding.defaultChannels.includes(this.id)) throw apiError(350000, 'Cannot delete an onboarding default channel while onboarding is enabled');
     this.guild.channels.cache.delete(this.id);
     this.guild.log.push(['channelDelete', this.name]);
     return this;
@@ -203,6 +238,15 @@ class FakeChannel {
     return msg;
   }
 
+  async createWebhook({ name, avatar } = {}) {
+    if (!name || name.length > 80 || /discord|clyde/i.test(name)) throw apiError(50035, `invalid webhook name: ${name}`);
+    if (![ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildForum].includes(this.type)) throw apiError(50024, 'webhooks need a text or forum channel');
+    const hook = new FakeWebhook(this, name, avatar);
+    this.guild.webhooks.push(hook);
+    this.guild.log.push(['webhookCreate', this.name]);
+    return hook;
+  }
+
   async setType(type) {
     if (type === ChannelType.GuildAnnouncement && !this.guild.features.includes('COMMUNITY')) throw apiError(50024, 'community required');
     this.type = type;
@@ -211,6 +255,42 @@ class FakeChannel {
 
   permissionsFor(member) {
     return member.permissionsIn?.(this) ?? new PermissionsBitField(0n);
+  }
+}
+
+class FakeWebhook {
+  constructor(channel, name, avatar) {
+    this.id = nextId();
+    this.channel = channel;
+    this.name = name;
+    this.avatar = avatar ?? null;
+    this.deleted = false;
+    this.sent = [];
+  }
+
+  async send(body) {
+    if (this.deleted) throw apiError(10015, 'Unknown Webhook');
+    validateMessage(body);
+    const channel = this.channel;
+    const author = { webhook: true, name: this.name, avatar: this.avatar };
+    if (channel.type === ChannelType.GuildForum) {
+      if (!body.threadName || body.threadName.length > 100) throw apiError(50035, 'forum webhook needs threadName');
+      const thread = channel.addThread(body.threadName, body);
+      const msg = new FakeMessage(thread, body, author);
+      thread.starter = msg;
+      this.sent.push(msg);
+      return msg;
+    }
+    if (body.threadName) throw apiError(50035, 'threadName only for forums');
+    const msg = new FakeMessage(channel, body, author);
+    channel.messages.push(msg);
+    this.sent.push(msg);
+    return msg;
+  }
+
+  async delete() {
+    this.deleted = true;
+    this.channel.guild.log.push(['webhookDelete', this.channel.name]);
   }
 }
 
@@ -275,6 +355,10 @@ class FakeGuild {
     this.welcomeScreen = null;
     this.iconSet = null;
     this.settings = {};
+    this.webhooks = [];
+    this.threads = new Map();
+    this.onboarding = null;
+    this.premiumTier = 0;
     const guild = this;
 
     this.roles = {
@@ -312,7 +396,12 @@ class FakeGuild {
 
     this.channels = {
       cache: new Collection(),
-      async fetch() { return this.cache; },
+      async fetch(id) {
+        if (id === undefined) return this.cache;
+        const found = this.cache.get(id) || guild.threads.get(id);
+        if (!found) throw apiError(10003, 'Unknown Channel');
+        return found;
+      },
       async create(data) {
         if (!data.name || data.name.length > 100) throw apiError(50035, `channel name invalid: ${data.name}`);
         if (this.cache.size >= 500) throw apiError(30013, 'Maximum number of guild channels reached (500)');
@@ -414,6 +503,17 @@ class FakeGuild {
       },
     });
     this.emojis = manager('emoji');
+    this.emojis.create = async ({ attachment, name }) => {
+      if (!/^\w{2,32}$/.test(name || '')) throw apiError(50035, `invalid emoji name ${name}`);
+      if (!isPng(attachment)) throw apiError(50035, 'emoji image must be PNG/JPG/GIF');
+      if (attachment.length > 256 * 1024) throw apiError(50045, 'File cannot be larger than 256 kb');
+      const limit = { 0: 50, 1: 100, 2: 150, 3: 250 }[guild.premiumTier];
+      if ([...guild.emojis.cache.values()].filter((e) => !e.animated).length >= limit) throw apiError(30008, 'Maximum number of emojis reached');
+      const id = nextId();
+      const entry = guild.emojis.add({ key: id, id, name, animated: false, managed: false, buffer: attachment });
+      guild.log.push(['emojiCreate', name]);
+      return entry;
+    };
     this.stickers = manager('sticker');
     this.invites = manager('invite');
     this.scheduledEvents = manager('event');
@@ -498,9 +598,55 @@ class FakeGuild {
     return this;
   }
 
-  async setIcon(url) {
-    this.iconSet = url;
+  async setIcon(icon) {
+    if (icon !== null && typeof icon !== 'string' && !isPng(icon)) throw apiError(50035, 'invalid icon');
+    this.iconSet = icon;
     return this;
+  }
+
+  get icon() {
+    return this.iconSet ? 'a1b2c3' : null;
+  }
+
+  async fetchOnboarding() {
+    return this.onboarding || { enabled: false, prompts: [], defaultChannels: [] };
+  }
+
+  /** Waliduje onboarding jak Discord (Społeczność, min. 7 kanałów domyślnych, 5 z pisaniem dla @everyone). */
+  async editOnboarding({ prompts = [], defaultChannels = [], enabled, mode = 0 }) {
+    if (!this.features.includes('COMMUNITY')) throw apiError(50101, 'onboarding requires community');
+    const snowflake = /^\d{17,20}$/;
+    const channelIds = defaultChannels.map((c) => (typeof c === 'string' ? c : c.id));
+    for (const id of channelIds) if (!this.channels.cache.has(id)) throw apiError(50035, `unknown default channel ${id}`);
+    if (prompts.length > 15) throw apiError(50035, 'too many prompts');
+    for (const p of prompts) {
+      if (!snowflake.test(String(p.id))) throw apiError(50035, 'prompt id must be a snowflake');
+      if (!p.title || p.title.length > 100) throw apiError(50035, `prompt title: ${p.title}`);
+      if (!p.options?.length || p.options.length > 50) throw apiError(50035, 'prompt options 1-50');
+      for (const o of p.options) {
+        if (!snowflake.test(String(o.id))) throw apiError(50035, 'option id must be a snowflake');
+        if (!o.title || o.title.length > 50) throw apiError(50035, `option title: ${o.title}`);
+        if (o.description && o.description.length > 100) throw apiError(50035, 'option description > 100');
+        if (typeof o.emoji === 'string') assertEmoji(o.emoji, 'onboarding option');
+        const roles = o.roles || [];
+        const channels = o.channels || [];
+        if (!roles.length && !channels.length) throw apiError(50035, 'option needs a role or a channel');
+        for (const r of roles) {
+          const role = this.roles.cache.get(r);
+          if (!role) throw apiError(50035, `unknown role ${r}`);
+          if (role.permissions.has(PermissionFlagsBits.Administrator) || role.permissions.has(PermissionFlagsBits.ManageGuild)) throw apiError(50035, 'onboarding cannot grant elevated roles');
+        }
+        for (const c of channels) if (!this.channels.cache.has(c)) throw apiError(50035, `unknown channel ${c}`);
+      }
+    }
+    if (enabled) {
+      const chans = channelIds.map((id) => this.channels.cache.get(id));
+      const writable = chans.filter((c) => [ChannelType.GuildText, ChannelType.GuildForum].includes(c.type) && c.everyoneCanSend());
+      if (chans.length < 7 || writable.length < 5) throw apiError(350000, `onboarding requirements: ${chans.length} default, ${writable.length} writable`);
+    }
+    this.onboarding = { enabled: Boolean(enabled), prompts, defaultChannels: channelIds, mode };
+    this.log.push(['onboarding', enabled, prompts.length]);
+    return this.onboarding;
   }
 
   async editWelcomeScreen(data) {
