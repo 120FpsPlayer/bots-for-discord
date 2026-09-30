@@ -1,7 +1,7 @@
 'use strict';
 
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, FileUploadBuilder, LabelBuilder, ModalBuilder,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, FileUploadBuilder, LabelBuilder, MessageFlags, ModalBuilder,
   StringSelectMenuBuilder, TextInputBuilder, TextInputStyle,
 } = require('discord.js');
 
@@ -165,6 +165,31 @@ function modalSelect(interaction, id) {
   }
 }
 
+// ───────────── Odpowiedzi na interakcje ─────────────
+
+/** Czy interakcja dotyczy istniejącej wiadomości (przycisk, menu, formularz otwarty przyciskiem). */
+function fromMessage(interaction) {
+  return Boolean(interaction.isMessageComponent?.() || (interaction.isModalSubmit?.() && interaction.isFromMessage()));
+}
+
+/**
+ * Potwierdza interakcję od razu, jeszcze bez nowej treści. Discord czeka na pierwszą odpowiedź
+ * tylko 3 s od kliknięcia – na wolnym hostingu formularz pokazałby „Coś poszło nie tak”, mimo że
+ * bot zrobił swoje. Treść wysyła się potem przez respond().
+ */
+async function acknowledge(interaction) {
+  if (interaction.deferred || interaction.replied) return;
+  if (fromMessage(interaction)) await interaction.deferUpdate();
+  else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+}
+
+/** Pokazuje ramkę: podmienia wiadomość (update), a po acknowledge() – edytuje ją (editReply). */
+function respond(interaction, payload) {
+  if (interaction.deferred || interaction.replied) return interaction.editReply(payload);
+  if (fromMessage(interaction)) return interaction.update(payload);
+  return interaction.reply({ ...payload, flags: MessageFlags.Ephemeral });
+}
+
 function formatDuration(seconds) {
   const s = Math.max(0, Math.round(seconds));
   if (s < 60) return `${s} s`;
@@ -191,5 +216,7 @@ module.exports = {
   modalText,
   modalSelect,
   modalFiles,
+  acknowledge,
+  respond,
   formatDuration,
 };

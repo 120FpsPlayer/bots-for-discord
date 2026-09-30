@@ -186,11 +186,13 @@ test('/stworz bez kodu: ekran kodu → zły kod → dobry kod → kreator; budow
 
   const wrong = createInteraction({ guild, userId: '1', customId: 'wzk:submit', kind: 'modal', fields: { code: 'ABCDE-FGHJK-LMNPQ-RSTUV' } });
   await wizard.handleCode(wrong);
-  assert.match(wrong.state.updates[0].embeds[0].data.description, /Nie ma takiego kodu/);
+  assert.equal(wrong.state.order[0], 'deferred', 'formularz kodu jest potwierdzany od razu');
+  assert.match(wrong.state.edits[0].embeds[0].data.description, /Nie ma takiego kodu/);
 
   const right = createInteraction({ guild, userId: '1', customId: 'wzk:submit', kind: 'modal', fields: { code: formatCode(code).toLowerCase() } });
   await wizard.handleCode(right);
-  const intro = right.state.updates[0].embeds[0].data;
+  assert.deepEqual(right.state.order, ['deferred', 'edits'], 'najpierw potwierdzenie, potem kreator w miejscu ekranu kodu');
+  const intro = right.state.edits[0].embeds[0].data;
   assert.match(intro.title, /Witaj w Kreatorze/);
   assert.ok(intro.fields.some((f) => f.value.includes('Kod dostępu') && f.value.includes('pozostało budów: **1**')));
 
@@ -250,6 +252,18 @@ test('anulowany w trakcie sesji kod blokuje budowę z podpowiedzią', async () =
   assert.match(b.state.updates[0].embeds[0].data.description, /nieaktywny.*Zapisz projekt/s);
 });
 
+test('formularz kodu, gdy serwer jest zajęty: potwierdzony od razu, powód w osobnej wiadomości', async () => {
+  const { wizard, store, codes } = setup();
+  const [{ code }] = codes.generate();
+  const guild = new FakeGuild({ name: 'A', ownerId: '1' });
+  store.lock(guild.id, 'czyszczenie serwera');
+  const i = createInteraction({ guild, userId: '1', customId: 'wzk:submit', kind: 'modal', fields: { code } });
+  await wizard.handleCode(i);
+  assert.deepEqual(i.state.order, ['deferred', 'replies']);
+  assert.match(i.state.replies[0].embeds[0].data.title, /zajęty/);
+  assert.equal(codes.grantFor(guild.id), null, 'kod nie został przypisany');
+});
+
 test('za dużo błędnych kodów blokuje wpisywanie na 15 minut', async () => {
   const { wizard } = setup();
   const guild = new FakeGuild({ name: 'A', ownerId: '1' });
@@ -258,8 +272,8 @@ test('za dużo błędnych kodów blokuje wpisywanie na 15 minut', async () => {
     last = createInteraction({ guild, userId: '7', customId: 'wzk:submit', kind: 'modal', fields: { code: `ABCDE-FGHJK-LMNPQ-RSTU${'VWXYZ'[i]}` } });
     await wizard.handleCode(last);
   }
-  assert.match(last.state.updates[0].embeds[0].data.description, /Za dużo błędnych prób/);
-  assert.equal(codeButton(last.state.updates[0]).disabled, true);
+  assert.match(last.state.edits[0].embeds[0].data.description, /Za dużo błędnych prób/);
+  assert.equal(codeButton(last.state.edits[0]).disabled, true);
   const enter = createInteraction({ guild, userId: '7', customId: 'wzk:enter' });
   await wizard.handleCode(enter);
   assert.equal(enter.state.modals.length, 0, 'formularz kodu jest zablokowany');

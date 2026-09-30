@@ -5,7 +5,9 @@ const { validateMessage, assertComponentEmojis } = require('./fakeDiscord');
 
 /**
  * Atrapa interakcji Discord dla kreatora. Każda odpowiedź (reply/update/showModal)
- * jest walidowana tak, jak zrobiłby to Discord (limity embedów, komponentów, modali).
+ * jest walidowana tak, jak zrobiłby to Discord (limity embedów, komponentów, modali),
+ * a kolejność odpowiedzi – jak w discord.js (druga pierwsza odpowiedź albo editReply
+ * przed potwierdzeniem rzuca błąd).
  */
 
 function validateModal(modal) {
@@ -25,11 +27,28 @@ function validateModal(modal) {
 }
 
 function createInteraction({ guild, userId = '1', customId, values, fields = {}, kind = 'component', permissions = PermissionsBitField.All, channelId = 'origin', commandName = 'stworz', attachment = null, stringOptions = {} }) {
-  const state = { replies: [], updates: [], modals: [], edits: [], dms: [] };
+  const state = { replies: [], updates: [], modals: [], edits: [], dms: [], order: [] };
   const record = (bucket) => async (payload) => {
     if (payload.embeds || payload.components) validateMessage(payload);
     state[bucket].push(payload);
+    state.order.push(bucket);
     return payload;
+  };
+  const acknowledged = () => interaction.deferred || interaction.replied;
+  /** Pierwsza odpowiedź na interakcję – dozwolona tylko raz (InteractionAlreadyReplied). */
+  const first = (bucket, flag) => async (payload) => {
+    if (acknowledged()) throw new Error(`${bucket}: interakcja ma już odpowiedź`);
+    interaction[flag] = true;
+    if (bucket === 'deferred') {
+      state.order.push('deferred');
+      return undefined;
+    }
+    return record(bucket)(payload);
+  };
+  /** Kolejne wiadomości – dopiero po potwierdzeniu interakcji. */
+  const later = (bucket) => async (payload) => {
+    if (!acknowledged()) throw new Error(`${bucket}: interakcja nie została jeszcze potwierdzona`);
+    return record(bucket)(payload);
   };
   const interaction = {
     state,
@@ -46,7 +65,9 @@ function createInteraction({ guild, userId = '1', customId, values, fields = {},
     memberPermissions: new PermissionsBitField(permissions),
     replied: false,
     deferred: false,
+    createdTimestamp: Date.now(),
     isChatInputCommand: () => kind === 'command',
+    isMessageComponent: () => kind === 'component',
     isModalSubmit: () => kind === 'modal',
     isFromMessage: () => kind === 'modal',
     isButton: () => kind === 'component' && values === undefined,
@@ -59,13 +80,15 @@ function createInteraction({ guild, userId = '1', customId, values, fields = {},
       getStringSelectValues: (id) => fields[id] ?? [],
       getUploadedFiles: (id) => (Array.isArray(fields[id]) ? new Map(fields[id].map((f, i) => [String(i), f])) : null),
     },
-    reply: record('replies'),
-    update: record('updates'),
-    editReply: record('edits'),
-    deferReply: async () => { interaction.deferred = true; },
-    deferUpdate: async () => { interaction.deferred = true; },
-    followUp: record('replies'),
+    reply: first('replies', 'replied'),
+    update: first('updates', 'replied'),
+    editReply: later('edits'),
+    deferReply: first('deferred', 'deferred'),
+    deferUpdate: first('deferred', 'deferred'),
+    followUp: later('replies'),
     showModal: async (modal) => {
+      if (acknowledged()) throw new Error('showModal: interakcja ma już odpowiedź');
+      interaction.replied = true;
       state.modals.push(validateModal(modal));
     },
   };

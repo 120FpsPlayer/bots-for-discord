@@ -336,7 +336,7 @@ test('szablony: sprzedawca zapisuje szablon (bez kodu), klient z kodem szablonu 
   assert.equal(open.state.modals[0].components[0].component.value, 'kraina-graczy');
   const save = createInteraction({ guild: sellerGuild, userId: '99', customId: `wz:${s.id}:m:tpl`, kind: 'modal', fields: { id: 'MC Premium!', name: 'Minecraft Premium', description: 'Pełny serwer MC' } });
   await wizard.handle(save);
-  assert.match(save.state.updates[0].embeds[0].data.description, /kod szablon=mc-premium/);
+  assert.match(save.state.edits[0].embeds[0].data.description, /kod szablon=mc-premium/);
   assert.equal(templates.get('mc-premium').name, 'Minecraft Premium');
   assert.deepEqual(templates.list().map((t) => t.id), ['mc-premium']);
 
@@ -398,7 +398,7 @@ test('logo wgrane w formularzu „Nazwa i opis” zostaje ikoną; zły plik jest
     logo: [{ url: 'https://x/y.exe', name: 'wirus.exe', contentType: 'application/octet-stream', size: 5000 }],
   } });
   await wizard.handle(bad);
-  assert.match(bad.state.updates[0].embeds[0].data.description, /Logo musi być obrazkiem/);
+  assert.match(bad.state.edits[0].embeds[0].data.description, /Logo musi być obrazkiem/);
   assert.equal(s.answers.basics.iconName, 'logo.png', 'poprzednie logo zostaje');
 });
 
@@ -639,11 +639,19 @@ test('krok „Grafika”: wybór stylu, podgląd baneru w embedzie, galeria styl
 
   const pick = createInteraction({ guild, userId: '1', customId: select.custom_id, values: ['futurystyczny'] });
   await wizard.handle(pick);
-  const updated = pick.state.updates[0];
+  // Nowy obrazek trzeba narysować – najpierw potwierdzenie kliknięcia (limit 3 s), potem podmiana panelu.
+  assert.deepEqual(pick.state.order, ['deferred', 'edits']);
+  const updated = pick.state.edits[0];
   assert.equal(s.answers.graphics.bannerStyle, 'futurystyczny');
   assert.equal(updated.embeds[0].data.image.url, 'attachment://podglad-baneru.jpg');
   assert.ok(isJpeg(updated.files[0].attachment));
   assert.ok(updated.embeds[0].data.fields.some((f) => f.value.includes('Futurystyczny')));
+
+  // Obrazek już narysowany (w pamięci) – zwykła, pojedyncza odpowiedź.
+  const again = createInteraction({ guild, userId: '1', customId: select.custom_id, values: ['futurystyczny'] });
+  await wizard.handle(again);
+  assert.deepEqual(again.state.order, ['updates']);
+  assert.equal(again.state.updates[0].embeds[0].data.image.url, 'attachment://podglad-baneru.jpg');
 
   // Przejście do innego kroku usuwa obrazek z wiadomości
   const next = createInteraction({ guild, userId: '1', customId: `wz:${s.id}:n:next` });

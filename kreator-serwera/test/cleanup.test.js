@@ -288,7 +288,8 @@ test('panel /usun: wybór, zła nazwa nic nie usuwa, poprawna – kopia zapasowa
   // Zła nazwa – nic nie zostaje usunięte.
   const wrong = createInteraction({ guild, userId: '1', customId: `cl:${sid}:confirm`, kind: 'modal', fields: { confirm: 'inna nazwa' }, channelId: origin.id });
   await panel.handle(wrong);
-  assert.match(wrong.state.updates[0].embeds[0].data.description, /nie zgadza/);
+  assert.equal(wrong.state.order[0], 'deferred', 'formularz potwierdzony od razu');
+  assert.match(wrong.state.edits[0].embeds[0].data.description, /nie zgadza/);
   assert.equal(guild.channels.cache.size, channelsBefore);
 
   // Poprawna nazwa (wielkość liter bez znaczenia).

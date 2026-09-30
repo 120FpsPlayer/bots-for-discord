@@ -191,7 +191,6 @@ test('wczytanie projektu: /stworz projekt:<plik> otwiera podsumowanie z odpowied
     const wizard = createWizard({ store, config, runBuild: async () => {} });
     const i = createInteraction({ guild, kind: 'command' });
     i.options = { getAttachment: () => ({ name: 'projekt.json', size: json.length, url: 'https://cdn.example/projekt.json', contentType: 'application/json' }) };
-    i.deferReply = async () => { i.deferred = true; };
     await wizard.start(i);
     const s = store.get(guild.id);
     assert.equal(s.step, 'summary');
@@ -203,7 +202,6 @@ test('wczytanie projektu: /stworz projekt:<plik> otwiera podsumowanie z odpowied
 
     const bad = createInteraction({ guild: new FakeGuild(), kind: 'command' });
     bad.options = { getAttachment: () => ({ name: 'zdjecie.png', size: 10, url: 'x', contentType: 'image/png' }) };
-    bad.deferReply = async () => {};
     await wizard.start(bad);
     assert.match(bad.state.edits[0].embeds[0].data.title, /Nie udało się wczytać/);
   } finally {

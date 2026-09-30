@@ -5,7 +5,7 @@ const { AttachmentBuilder, ChannelType, MessageFlags, PermissionFlagsBits } = re
 const { performCleanup, TARGETS, DEFAULT_TARGETS, MAX_UNBANS } = require('./cleaner');
 const { snapshotGuild } = require('./snapshot');
 const {
-  COLORS, embed, field, button, linkButton, row, selectRow, modal, modalText, progressBar, clip, formatDuration, ButtonStyle,
+  COLORS, embed, field, button, linkButton, row, selectRow, modal, modalText, progressBar, clip, formatDuration, ButtonStyle, acknowledge, respond,
 } = require('../wizard/ui');
 const { createLogger } = require('../utils/logger');
 
@@ -342,10 +342,12 @@ function createCleanupPanel({ store }) {
         }]));
       }
       case 'confirm': {
+        // Formularz potwierdzamy od razu – Discord czeka na odpowiedź tylko 3 s.
+        await acknowledge(interaction);
         const typed = modalText(interaction, 'confirm').toLocaleLowerCase('pl');
         if (typed !== interaction.guild.name.trim().toLocaleLowerCase('pl')) {
           s.flash = '❌ Nazwa serwera się nie zgadza – nic nie zostało usunięte.';
-          return interaction.isFromMessage() ? interaction.update(panelFrame(s)) : interaction.reply({ ...panelFrame(s), flags: MessageFlags.Ephemeral });
+          return respond(interaction, panelFrame(s));
         }
         return run(s, interaction);
       }
@@ -358,7 +360,7 @@ function createCleanupPanel({ store }) {
     const { guild } = interaction;
     if (store.lockedBy(guild.id)) {
       s.flash = `⏳ Na serwerze trwa: ${store.lockedBy(guild.id)}. Spróbuj za chwilę.`;
-      return interaction.update(panelFrame(s));
+      return respond(interaction, panelFrame(s));
     }
     s.running = true;
     s.abort = false;
@@ -375,7 +377,7 @@ function createCleanupPanel({ store }) {
       return editing;
     };
     try {
-      await interaction.update(progressFrame(s, { done: 0, total: 1, phase: 'Przygotowanie', label: '', phases: [], elapsed: 0 }));
+      await respond(interaction, progressFrame(s, { done: 0, total: 1, phase: 'Przygotowanie', label: '', phases: [], elapsed: 0 }));
       if (s.after.has('backup')) {
         try {
           await sendBackup(interaction, guild, { mode: 'followUp' });

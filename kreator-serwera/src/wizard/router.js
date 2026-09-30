@@ -5,7 +5,7 @@ const { STEPS, STEP_INDEX } = require('./steps');
 const { buildBlueprint } = require('../builder/blueprint');
 const { channelPages, rolePages, summaryFields } = require('./preview');
 const {
-  COLORS, cid, embed, field, button, row, selectRow, progressBar, modal, modalText, clip, ButtonStyle, formatDuration,
+  COLORS, cid, embed, field, button, row, selectRow, progressBar, modal, modalText, clip, ButtonStyle, formatDuration, acknowledge, respond,
 } = require('./ui');
 const { loadProjectAttachment, sanitizeAnswers } = require('./project');
 const { packageOf, applyPackage } = require('../access/packages');
@@ -247,7 +247,7 @@ function createWizard({
   }
 
   async function handleRestore(s, interaction, id) {
-    if (!s.restore) return interaction.update(await view(s));
+    if (!s.restore) return show(interaction, s);
     if (id === 'mode') {
       const mode = interaction.values[0] === 'wipe' ? 'wipe' : 'append';
       if (mode === 'wipe' && interaction.guild.ownerId !== interaction.user.id) {
@@ -259,7 +259,7 @@ function createWizard({
     } else if (id === 'opts') {
       s.restore.options = interaction.values.filter((v) => RESTORE_OPTIONS[v]);
     }
-    return interaction.update(await view(s));
+    return show(interaction, s);
   }
 
   function summaryFrame(s) {
@@ -335,29 +335,39 @@ function createWizard({
   /**
    * Ramka gotowa do wysłania: dokleja obrazek (np. podgląd baneru) jako załącznik embedu
    * i usuwa poprzedni obrazek z wiadomości (attachments: []).
+   * beforeDraw – wywoływane, zanim zacznie się rysowanie (obrazka nie ma jeszcze w pamięci).
    */
-  async function view(s) {
+  async function view(s, { beforeDraw = null } = {}) {
     const frame = render(s);
     const spec = frame.imageSpec;
     delete frame.imageSpec;
     frame.attachments = [];
-    if (spec && gfx.available()) {
+    if (!spec || !gfx.available()) return frame;
+    const key = JSON.stringify(spec);
+    let buf = imageCache.get(key);
+    if (!buf) {
+      await beforeDraw?.();
       try {
-        const key = JSON.stringify(spec);
-        let buf = imageCache.get(key);
-        if (!buf) {
-          buf = await renderStyledBanner({ ...spec, width: 1000 });
-          imageCache.set(key, buf);
-          if (imageCache.size > 40) imageCache.delete(imageCache.keys().next().value);
-        }
-        const name = `podglad-baneru.${bannerExt(spec.style)}`;
-        frame.files = [new AttachmentBuilder(buf, { name })];
-        frame.embeds[0].setImage(`attachment://${name}`);
+        buf = await renderStyledBanner({ ...spec, width: 1000 });
       } catch (err) {
         log.warn(`Podgląd baneru nieudany: ${err.message}`);
+        return frame;
       }
+      imageCache.set(key, buf);
+      if (imageCache.size > 40) imageCache.delete(imageCache.keys().next().value);
     }
+    const name = `podglad-baneru.${bannerExt(spec.style)}`;
+    frame.files = [new AttachmentBuilder(buf, { name })];
+    frame.embeds[0].setImage(`attachment://${name}`);
     return frame;
+  }
+
+  /**
+   * Pokazuje bieżący ekran sesji w panelu. Rysowanie podglądu baneru na słabym hostingu potrafi
+   * trwać kilka sekund, więc wtedy najpierw potwierdzamy kliknięcie (Discord czeka tylko 3 s).
+   */
+  async function show(interaction, s) {
+    return respond(interaction, await view(s, { beforeDraw: () => acknowledge(interaction) }));
   }
 
   function render(s) {
@@ -466,13 +476,15 @@ function createWizard({
   async function handleCode(interaction) {
     const action = interaction.customId.split(':')[1];
     const key = `${interaction.guildId}:${interaction.user.id}`;
+    // Formularz z kodem potwierdzamy od razu – sprawdzenie kodu i otwarcie kreatora dzieją się już po tym.
+    if (interaction.isModalSubmit()) await acknowledge(interaction);
     if (action === 'cancel') {
       pendingFiles.delete(key);
       return interaction.update(endedFrame('✖️ Anulowano', 'Użyj **/stworz**, kiedy będziesz mieć kod dostępu.'));
     }
     const problem = accessProblem(interaction);
-    if (problem) return interaction.reply({ ...problem, flags: MessageFlags.Ephemeral });
-    if (!needsCode(interaction.user.id)) return open(interaction, { attachment: takePending(key), respond: interaction.isModalSubmit?.() && !interaction.isFromMessage() ? 'reply' : 'update' });
+    if (problem) return interaction.deferred ? interaction.followUp({ ...problem, flags: MessageFlags.Ephemeral }) : interaction.reply({ ...problem, flags: MessageFlags.Ephemeral });
+    if (!needsCode(interaction.user.id)) return open(interaction, { attachment: takePending(key) });
 
     if (action === 'enter') {
       const blockedMinutes = limiter.blockedFor(interaction.user.id);
@@ -489,15 +501,14 @@ function createWizard({
       }]));
     }
     if (action === 'submit') {
-      const respond = interaction.isFromMessage() ? 'update' : 'reply';
       const grant = grantOf(interaction.guildId);
-      if (grant?.error) return interaction[respond]({ ...codeFrame({ error: grant.error }), ...(respond === 'reply' ? { flags: MessageFlags.Ephemeral } : {}) });
+      if (grant?.error) return respond(interaction, codeFrame({ error: grant.error }));
       // Kod mógł już zostać przypisany do serwera (np. przez innego administratora) – wtedy nie pytamy drugi raz.
       if (!grant) {
         const r = tryRedeem(interaction, modalText(interaction, 'code'));
-        if (!r.ok) return interaction[respond]({ ...r.frame, ...(respond === 'reply' ? { flags: MessageFlags.Ephemeral } : {}) });
+        if (!r.ok) return respond(interaction, r.frame);
       }
-      return open(interaction, { attachment: takePending(key), respond });
+      return open(interaction, { attachment: takePending(key) });
     }
     return undefined;
   }
@@ -546,17 +557,17 @@ function createWizard({
         pendingFiles.delete(key);
       }
     }
-    return open(interaction, { attachment, respond: 'reply' });
+    return open(interaction, { attachment });
   }
 
   /**
-   * Otwiera kreator (albo wczytany projekt / kopię zapasową).
-   * respond: 'reply' – nowa wiadomość (komenda), 'update' – podmiana wiadomości z ekranem kodu.
+   * Otwiera kreator (albo wczytany projekt / kopię zapasową): po komendzie jako nowa wiadomość,
+   * po formularzu kodu – w miejscu ekranu kodu.
    */
-  async function open(interaction, { attachment = null, respond = 'reply' } = {}) {
+  async function open(interaction, { attachment = null } = {}) {
     const { guild } = interaction;
     const isOwner = guild.ownerId === interaction.user.id;
-    const send = (payload) => (respond === 'update' ? interaction.update(payload) : interaction.reply({ ...payload, flags: MessageFlags.Ephemeral }));
+    const send = (payload) => respond(interaction, payload);
     const me = guild.members.me ?? await guild.members.fetchMe();
     const highest = guild.roles.cache.reduce((max, r) => (r.position > max ? r.position : max), 0);
     const seller = isSeller(interaction.user.id);
@@ -587,8 +598,7 @@ function createWizard({
     // /stworz projekt:<plik.json> – wczytanie zapisanego projektu i przejście od razu do podsumowania.
     let imported = null;
     if (attachment) {
-      if (respond === 'update') await interaction.deferUpdate();
-      else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      await acknowledge(interaction);
       try {
         imported = await loadProjectAttachment(attachment);
       } catch (err) {
@@ -628,7 +638,7 @@ function createWizard({
       session.step = 'summary';
       session.flash = '📦 Wczytano szablon. Ustaw **nazwę, opis i logo** („Dopasuj szablon” → Nazwa i opis), wybierz tryb budowy i kliknij **Zbuduj serwer**.';
       if (!env.botAdmin) session.flash += '\n❌ Bot nie ma uprawnienia Administrator – nadaj je przed budową.';
-      return send(await view(session));
+      return show(interaction, session);
     }
 
     if (imported?.kind === 'backup') {
@@ -638,7 +648,7 @@ function createWizard({
       session.step = 'summary';
       if (!env.botAdmin) session.flash = '❌ Bot nie ma uprawnienia Administrator – nadaj je przed przywracaniem.';
       else if (!isOwner) session.flash = 'ℹ️ Tryb „Wyczyść i przywróć” może wybrać tylko właściciel serwera.';
-      return interaction.editReply(await view(session));
+      return show(interaction, session);
     }
 
     if (imported) {
@@ -648,7 +658,7 @@ function createWizard({
       session.step = 'summary';
       session.flash = `📥 Wczytano projekt **${imported.basics.name || 'bez nazwy'}** – sprawdź podsumowanie. Tryb budowy ustawiono na „dodaj” (czyszczenie wybierzesz ręcznie w kroku „Tryb budowy”).`;
       if (!env.botAdmin) session.flash += '\n❌ Bot nie ma uprawnienia Administrator – nadaj je przed budową.';
-      return interaction.editReply(await view(session));
+      return show(interaction, session);
     }
 
     const frame = introFrame(session);
@@ -691,7 +701,7 @@ function createWizard({
         const handler = step?.select?.[id];
         if (handler) handler(session, interaction.values);
       }
-      return interaction.update(await view(session));
+      return show(interaction, session);
     }
 
     // Przyciski kroku
@@ -699,17 +709,18 @@ function createWizard({
       const handler = step?.button?.[id];
       const result = handler ? handler(session, interaction) : null;
       if (result?.modal) return interaction.showModal(result.modal);
-      return interaction.update(await view(session));
+      return show(interaction, session);
     }
 
     // Formularze (modale)
     if (kind === 'm') {
+      // Formularze potwierdzamy od razu (limit 3 s liczy się od kliknięcia „Wyślij”).
+      await acknowledge(interaction);
       if (id === 'wipe') return handleWipeConfirm(session, interaction);
       if (id === 'tpl') return handleTemplateSave(session, interaction);
       const handler = step?.modal?.[id];
       if (handler) handler(session, interaction);
-      if (interaction.isFromMessage()) return interaction.update(await view(session));
-      return interaction.reply({ ...(await view(session)), flags: MessageFlags.Ephemeral });
+      return show(interaction, session);
     }
 
     // Przywracanie kopii zapasowej
@@ -780,7 +791,7 @@ function createWizard({
       default:
         break;
     }
-    return interaction.update(await view(s));
+    return show(interaction, s);
   }
 
   // ───────────── Podgląd obrazkiem i przykładowy baner ─────────────
@@ -853,12 +864,11 @@ function createWizard({
   }
 
   async function handleTemplateSave(s, interaction) {
-    const reply = (payload) => (interaction.isFromMessage() ? interaction.update(payload) : interaction.reply({ ...payload, flags: MessageFlags.Ephemeral }));
-    if (!s.seller || !templates) return reply(await view(s));
+    if (!s.seller || !templates) return show(interaction, s);
     const id = slugify(modalText(interaction, 'id'));
     if (!ID_RE.test(id)) {
       s.flash = '⚠️ ID szablonu: 2–32 znaki – małe litery, cyfry i myślniki (np. minecraft-premium).';
-      return reply(await view(s));
+      return show(interaction, s);
     }
     const bp = computeBlueprint(s);
     const answers = JSON.parse(JSON.stringify(s.answers));
@@ -873,7 +883,7 @@ function createWizard({
     });
     log.info(`📦 Szablon „${saved.name}” (${saved.id}) ${saved.updated ? 'zaktualizowany' : 'zapisany'} przez ${interaction.user.tag}.`);
     s.flash = `📦 Szablon **${saved.name}** ${saved.updated ? 'zaktualizowany' : 'zapisany'}. Kod dla klienta wygenerujesz w konsoli: \`kod szablon=${saved.id}\``;
-    return reply(await view(s));
+    return show(interaction, s);
   }
 
   async function exportBlueprint(s, interaction) {
@@ -891,7 +901,7 @@ function createWizard({
     const busy = store.lockedBy(s.guildId);
     if (busy) {
       s.flash = `⏳ Na serwerze trwa teraz: ${busy}. Poczekaj, aż się zakończy.`;
-      return interaction.update(await view(s));
+      return show(interaction, s);
     }
     if (gated() && !s.seller) {
       const grant = grantOf(s.guildId);
@@ -899,7 +909,7 @@ function createWizard({
         s.flash = grant?.error
           ? `🔑 ${grant.error}`
           : '🔑 Kod dostępu tego serwera jest już nieaktywny (wykorzystany lub anulowany). Kliknij **Zapisz projekt**, a potem użyj `/stworz` z nowym kodem i dołącz plik projektu – nic nie stracisz.';
-        return interaction.update(await view(s));
+        return show(interaction, s);
       }
       s.env.code = { masked: maskCode(grant.code), remaining: grant.remaining, uses: grant.uses };
     }
@@ -909,13 +919,13 @@ function createWizard({
     const bp = computeBlueprint(s);
     if (bp.errors.length) {
       s.flash = '❌ Najpierw popraw problemy wymienione w podsumowaniu.';
-      return interaction.update(await view(s));
+      return show(interaction, s);
     }
     if (s.answers.mode.type === 'wipe') {
       if (interaction.guild.ownerId !== interaction.user.id) {
         s.flash = '🔒 Tryb czyszczenia jest dostępny tylko dla właściciela serwera.';
         s.answers.mode.type = 'append';
-        return interaction.update(await view(s));
+        return show(interaction, s);
       }
       return interaction.showModal(modal(cid(s, 'm', 'wipe'), 'Potwierdź wyczyszczenie serwera', [{
         id: 'confirm',
@@ -934,8 +944,7 @@ function createWizard({
     const typed = modalText(interaction, 'confirm').toLocaleLowerCase('pl');
     if (typed !== interaction.guild.name.trim().toLocaleLowerCase('pl')) {
       s.flash = '❌ Nazwa serwera się nie zgadza – czyszczenie anulowane. Nic nie zostało usunięte.';
-      if (interaction.isFromMessage()) return interaction.update(await view(s));
-      return interaction.reply({ ...(await view(s)), flags: MessageFlags.Ephemeral });
+      return show(interaction, s);
     }
     return launch(s, interaction);
   }
@@ -953,7 +962,7 @@ function createWizard({
       }
       if (!res.ok) {
         s.flash = `🔑 ${res.error}`;
-        return interaction.update(await view(s));
+        return show(interaction, s);
       }
       ticket = res;
       log.info(`🔑 Kod ${maskCode(res.code)}: start budowy na ${interaction.guild.name} (${s.guildId}) – pozostało ${res.remaining}/${res.uses}`);
@@ -965,7 +974,7 @@ function createWizard({
     const bp = s.blueprint;
     let result = null;
     try {
-      await interaction.update({
+      await respond(interaction, {
         embeds: [embed({ title: '🏗️ Przygotowuję budowę…', description: `${progressBar(0, 1)}\n⏱️ Szacowany czas: ~${formatDuration(bp.estimatedSeconds)}`, color: COLORS.build })],
         components: [],
       });

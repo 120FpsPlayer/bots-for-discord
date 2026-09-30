@@ -98,7 +98,16 @@ client.once(Events.ClientReady, async (c) => {
   log.info(`Link zaproszenia bota:\n  ${invite}`);
 });
 
+/** Podpowiedzi w konsoli dla błędów, których przyczyna leży poza kodem bota. */
+const ERROR_HINTS = {
+  10062: '⏱️ Discord odrzucił odpowiedź, bo od kliknięcia minęły ponad 3 s – hosting jest przeciążony albo ma wolne łącze.',
+  40060: '👥 Ta interakcja miała już odpowiedź. Jeśli to się powtarza, sprawdź, czy bot nie jest uruchomiony w dwóch miejscach naraz (ten sam token, np. komputer + Wispbyte).',
+};
+
 client.on(Events.InteractionCreate, async (interaction) => {
+  // Discord czeka na odpowiedź 3 s od kliknięcia – duże opóźnienie oznacza, że błąd „Coś poszło nie tak” może wynikać z hostingu.
+  const lag = Date.now() - interaction.createdTimestamp;
+  if (lag > 2000) log.warn(`⏱️ Interakcja dotarła do bota po ${(lag / 1000).toFixed(1)} s (ping ${client.ws.ping} ms) – hosting albo łącze jest przeciążone.`);
   try {
     if (!interaction.inGuild() || !interaction.guild) {
       if (interaction.isRepliable()) await interaction.reply({ content: 'Tego bota używa się na serwerze.', flags: MessageFlags.Ephemeral });
@@ -134,6 +143,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
   } catch (err) {
     log.error(`Błąd interakcji (${interaction.customId ?? interaction.commandName ?? interaction.type}):`, err);
+    if (ERROR_HINTS[err?.code]) log.warn(ERROR_HINTS[err.code]);
     await replyWithError(interaction, err);
   }
 });
