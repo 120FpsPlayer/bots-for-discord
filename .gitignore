@@ -5,4 +5,4 @@ node_modules/
 Thumbs.db
 *.zip
 # kody dostępu (sprzedane kody – nie wrzucaj do repozytorium)
-data/
+/kreator-serwera/data/
