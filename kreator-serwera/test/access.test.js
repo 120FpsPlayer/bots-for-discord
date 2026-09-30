@@ -252,6 +252,23 @@ test('anulowany w trakcie sesji kod blokuje budowę z podpowiedzią', async () =
   assert.match(b.state.updates[0].embeds[0].data.description, /nieaktywny.*Zapisz projekt/s);
 });
 
+test('konsola: „test” mierzy łącze z Discordem, procesor i opóźnienia kliknięć', async () => {
+  const codes = tempStore();
+  const slow = { ws: { ping: 480 }, rest: { get: () => new Promise((resolve) => { setTimeout(resolve, 5); }) } };
+  const res = await runCommand('test', { codes, client: slow, store: null, stats: { lags: [300, 2500, 1800] } });
+  const text = res.lines.join('\n');
+  assert.match(text, /Ping do Discorda: 480 ms/);
+  assert.match(text, /Odpowiedź API Discorda: \d+ ms/);
+  assert.match(text, /Rysowanie baneru: \d+ ms/);
+  assert.match(text, /średnio 1533 ms, najdłużej 2500 ms \(ostatnie 3\)/);
+  assert.match(res.lines.at(-1), /🐢 Wniosek: łącze hostingu z Discordem ma duże opóźnienie; kliknięcia długo docierają/);
+
+  const fast = await runCommand('ping', { codes, client: { ws: { ping: 40 }, rest: { get: async () => ({}) } }, store: null, stats: { lags: [120, 90] } });
+  assert.doesNotMatch(fast.lines.at(-1), /łącze|API|kliknięcia/, 'szybkie łącze nie jest wskazywane jako problem');
+  const offline = await runCommand('test', { codes, client: { ws: { ping: -1 }, rest: { get: async () => { throw new Error('ECONNRESET'); } } }, store: null });
+  assert.match(offline.lines.join('\n'), /brak połączenia[\s\S]*brak pomiarów/);
+});
+
 test('formularz kodu, gdy serwer jest zajęty: potwierdzony od razu, powód w osobnej wiadomości', async () => {
   const { wizard, store, codes } = setup();
   const [{ code }] = codes.generate();

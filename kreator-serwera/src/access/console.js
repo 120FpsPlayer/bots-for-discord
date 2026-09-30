@@ -1,6 +1,7 @@
 'use strict';
 
 const readline = require('node:readline');
+const { Routes } = require('discord.js');
 const { formatCode, normalizeCode, MAX_BATCH, MAX_USES } = require('./codes');
 const { PACKAGES, FEATURES, packageOf } = require('./packages');
 
@@ -28,6 +29,7 @@ const HELP = [
   '│ serwery                – serwery, na których jest bot',
   '│ wyjdz <id serwera>     – bot opuszcza serwer',
   '│ status                 – stan bota',
+  '│ test                   – szybkość hostingu: łącze z Discordem i procesor',
   '│ stop                   – wyłącza bota',
   '└─────────────────────────────────────────────────────────────────',
 ];
@@ -56,11 +58,72 @@ function codeBox(records) {
   return out;
 }
 
+const ms = (n) => `${Math.round(n)} ms`;
+const median = (list) => [...list].sort((a, b) => a - b)[Math.floor(list.length / 2)];
+
+/**
+ * Test szybkości hostingu: skąd biorą się opóźnienia panelu kreatora.
+ * lags – opóźnienia ostatnich kliknięć (od kliknięcia na Discordzie do dotarcia do bota).
+ */
+async function speedTest({ client, lags = [] }) {
+  const lines = ['🔎 Test szybkości hostingu (kilka sekund)…'];
+  const verdict = [];
+
+  const ping = client?.ws?.ping ?? -1;
+  lines.push(`• Ping do Discorda: ${ping >= 0 ? ms(ping) : 'jeszcze nie zmierzony'}   (dobrze: poniżej 150 ms)`);
+  if (ping > 200) verdict.push('łącze hostingu z Discordem ma duże opóźnienie');
+
+  if (client?.rest) {
+    const times = [];
+    for (let i = 0; i < 3; i += 1) {
+      const t = Date.now();
+      try {
+        await client.rest.get(Routes.gateway());
+        times.push(Date.now() - t);
+      } catch {
+        // pomiar nieudany – liczą się pozostałe
+      }
+    }
+    if (times.length) {
+      lines.push(`• Odpowiedź API Discorda: ${ms(median(times))} (od ${ms(Math.min(...times))} do ${ms(Math.max(...times))})   (dobrze: poniżej 300 ms)`);
+      if (median(times) > 400) verdict.push('każda zmiana panelu długo idzie z hostingu do Discorda');
+    } else {
+      lines.push('• Odpowiedź API Discorda: brak połączenia');
+      verdict.push('hosting nie może połączyć się z API Discorda');
+    }
+  }
+
+  const gfx = require('../graphics/engine');
+  if (gfx.available()) {
+    const { renderStyledBanner } = require('../graphics/banners');
+    await renderStyledBanner({ style: 'nowoczesny', title: 'Test', subtitle: 'rozgrzewka', width: 1000 });
+    const t = Date.now();
+    await renderStyledBanner({ style: 'nowoczesny', title: 'Test szybkości', subtitle: 'Kreator Serwera', width: 1000 });
+    const took = Date.now() - t;
+    lines.push(`• Rysowanie baneru: ${ms(took)}   (zwykły komputer: ok. 100 ms)`);
+    if (took > 400) verdict.push(`procesor hostingu jest ok. ${Math.round(took / 100)}× wolniejszy od zwykłego komputera (podgląd banerów i budowa trwają dłużej)`);
+  }
+
+  const recent = lags.slice(-20);
+  if (recent.length) {
+    const avg = recent.reduce((a, b) => a + b, 0) / recent.length;
+    lines.push(`• Kliknięcia docierają do bota po: średnio ${ms(avg)}, najdłużej ${ms(Math.max(...recent))} (ostatnie ${recent.length})   (dobrze: poniżej 500 ms)`);
+    if (avg > 1000) verdict.push('kliknięcia długo docierają z Discorda do hostingu');
+  } else {
+    lines.push('• Kliknięcia: brak pomiarów – kliknij coś w kreatorze i uruchom test ponownie');
+  }
+
+  lines.push(verdict.length
+    ? `🐢 Wniosek: ${verdict.join('; ')}. To kwestia hostingu, nie bota – pomoże szybszy serwer (np. płatny plan albo inna lokalizacja).`
+    : '✅ Wniosek: hosting jest w porządku. Jeśli panel wolno się odświeża, opóźnienie jest po stronie Discorda albo Twojego internetu.');
+  return lines;
+}
+
 /**
  * Wykonuje jedną komendę konsoli. Zwraca { lines, stop } – czysta funkcja (łatwa do testów).
- * ctx: { codes, client?, store? }
+ * ctx: { codes, client?, store?, stats? } – stats.lags: opóźnienia ostatnich kliknięć (ms)
  */
-async function runCommand(input, { codes, client, store, templates = null, leaver = null }) {
+async function runCommand(input, { codes, client, store, templates = null, leaver = null, stats = null }) {
   const line = String(input || '').trim();
   if (!line) return { lines: [] };
   const [rawCmd, ...args] = line.split(/\s+/);
@@ -239,6 +302,9 @@ async function runCommand(input, { codes, client, store, templates = null, leave
         };
       }
 
+      case 'test': case 'ping': case 'szybkosc': case 'diagnoza':
+        return { lines: await speedTest({ client, lags: stats?.lags }) };
+
       case 'stop': case 'exit': case 'wylacz':
         return { lines: ['Wyłączam bota…'], stop: true };
 
@@ -251,11 +317,11 @@ async function runCommand(input, { codes, client, store, templates = null, leave
 }
 
 /** Nasłuchuje komend na standardowym wejściu (konsola hostingu / terminal). */
-function startConsole({ codes, client, store, templates, leaver, onStop, output = console.log }) {
+function startConsole({ codes, client, store, templates, leaver, stats, onStop, output = console.log }) {
   if (!process.stdin || process.stdin.destroyed) return null;
   const rl = readline.createInterface({ input: process.stdin, terminal: false });
   rl.on('line', async (line) => {
-    const { lines, stop } = await runCommand(line, { codes, client, store, templates, leaver });
+    const { lines, stop } = await runCommand(line, { codes, client, store, templates, leaver, stats });
     for (const l of lines) output(l);
     if (stop) onStop?.();
   });

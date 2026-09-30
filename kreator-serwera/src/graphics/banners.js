@@ -620,24 +620,31 @@ function space(ctx, { title, subtitle, color, rand }) {
   const accent = vivid(color, 0.7);
   ctx.fillStyle = '#02030a';
   ctx.fillRect(0, 0, W, H);
-  // Mgławica – wiele miękkich plam światła wzdłuż ukośnego pasa
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  ctx.filter = 'blur(6px)';
+  // Mgławica – wiele miękkich plam światła wzdłuż ukośnego pasa. Rysowana w 1/4 rozdzielczości
+  // i powiększana: jest i tak rozmyta, a rysowanie 95 plam w pełnym rozmiarze trwało ~1 s.
+  const Q = 4;
+  const nebula = E.createCanvas(W / Q, H / Q);
+  const n = nebula.getContext('2d');
+  n.globalCompositeOperation = 'lighter';
+  n.filter = 'blur(1.5px)';
   const colors = [accent, tone(accent, { h: 55 }), tone(accent, { h: -50 }), tone(accent, { h: 170, l: 0.55 })];
   for (let i = 0; i < 95; i += 1) {
     const t = rand();
-    const x = t * W;
-    const y = H * (0.85 - t * 0.7) + (rand() - 0.5) * 220;
-    const r = 60 + rand() * 230;
+    const x = (t * W) / Q;
+    const y = (H * (0.85 - t * 0.7) + (rand() - 0.5) * 220) / Q;
+    const r = (60 + rand() * 230) / Q;
     const c = colors[Math.floor(rand() * colors.length)];
-    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const g = n.createRadialGradient(x, y, 0, x, y, r);
     g.addColorStop(0, rgba(c, 0.08 + rand() * 0.13));
     g.addColorStop(1, rgba(c, 0));
-    ctx.fillStyle = g;
-    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+    n.fillStyle = g;
+    n.fillRect(x - r, y - r, r * 2, r * 2);
   }
-  ctx.filter = 'none';
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(nebula, 0, 0, W, H);
   ctx.restore();
   // Ciemne smugi pyłu
   ctx.save();

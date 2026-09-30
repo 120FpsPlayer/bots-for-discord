@@ -145,6 +145,7 @@ w polu pod konsolą (tam, gdzie widać logi bota), lokalnie – w oknie, w któr
 | `serwery` / `wyjdz <id>` | serwery z botem / bot opuszcza serwer |
 | `wyjscia` / `zostan <id>` | zaplanowane wyjścia bota / odwołanie wyjścia |
 | `status` / `pomoc` / `stop` | stan bota / lista komend / wyłączenie bota |
+| `test` | szybkość hostingu: ping do Discorda, odpowiedź API, szybkość procesora i opóźnienia kliknięć – z wnioskiem, co spowalnia panel |
 
 **Jak to działa dla kupującego:**
 1. Dodaje bota na swój serwer i wpisuje **`/stworz`** – pojawia się ekran „Wymagany kod dostępu”.
@@ -303,6 +304,7 @@ Nawet przy własnych ustawieniach kanał weryfikacji, regulamin (przy weryfikacj
 | `/stworz` prosi o kod | Tak ma być – wygeneruj kod w konsoli bota komendą `kod`. Do testów możesz wyłączyć kody: `REQUIRE_CODE=false`. |
 | Konsola nie reaguje na `kod` | Wpisuj komendy w polu pod konsolą na Wispbyte (bot musi być uruchomiony). Lista komend: `pomoc`. |
 | Okienko pokazuje „Coś poszło nie tak”, a panel pod nim i tak się zmienił | Discord czeka na odpowiedź bota tylko 3 s. Od wersji 2.1.1 bot potwierdza formularze od razu. Jeśli błąd wraca, sprawdź w konsoli ostrzeżenie „⏱️ Interakcja dotarła do bota po … s” – to znak, że hosting jest przeciążony. Kod nie przepada: jest przypisany do serwera i zużywa się dopiero przy budowie. |
+| Panel kreatora długo się odświeża | Bot przygotowuje ekran w kilka milisekund – resztę zajmuje droga hosting ↔ Discord. Wpisz w konsoli `test`: pokaże, czy winne jest łącze, czy procesor hostingu. Krok „Grafika” jest wolniejszy, bo wysyła obrazek podglądu. |
 | „Baza kodów jest niedostępna” | Plik `data/kody.json` jest uszkodzony – przywróć go z kopii (bot nie nadpisze uszkodzonego pliku). |
 | „Onboarding pominięty” w podsumowaniu | Onboarding wymaga trybu Społeczności, **nie działa z sekcją „Weryfikacja”** i potrzebuje min. 7 kanałów widocznych dla wszystkich (5 z pisaniem). Powód jest w uwagach. |
 | W konsoli „Grafika: wyłączona” | Hosting nie wczytał `@napi-rs/canvas` – uruchom ponownie (`index.js` doinstaluje brakujące biblioteki). Bot działa dalej, tylko bez obrazków. |
