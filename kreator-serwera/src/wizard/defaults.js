@@ -1,5 +1,6 @@
 'use strict';
 
+const { TYPE_BANNER_STYLES, DEFAULT_BANNER_STYLE, BANNER_STYLES } = require('../graphics/banners');
 const { SERVER_TYPES } = require('../data/serverTypes');
 const { MODULES } = require('../data/modules');
 
@@ -133,6 +134,8 @@ function computeDependentDefaults(answers) {
     'content.community': preset.key === 'friends' || size === 'small' ? 'off' : 'full',
     // Onboarding Discorda działa tylko ze Społecznością i bez blokady weryfikacji.
     'onboarding.enabled': !modules.includes('verification') && !(preset.key === 'friends' || size === 'small'),
+    // Styl banerów dopasowany do typu serwera (np. Minecraft → pikselowy, esport → gaming).
+    'graphics.bannerStyle': TYPE_BANNER_STYLES[preset.key] || DEFAULT_BANNER_STYLE,
     'special.items': list ? [...list.defaults] : [],
     'special.options': list ? [...list.options] : [],
     'special.layout': list ? list.layout : 'shared',
@@ -152,7 +155,7 @@ function setPath(obj, path, value) {
 }
 
 /** Pola zależne od typu – resetowane przy zmianie typu serwera. */
-const TYPE_FIELDS = ['modules', 'staffRoles', 'communityRoles', 'special.items', 'special.options', 'special.layout', 'special.extras', 'security.automod', 'content.community', 'onboarding.enabled'];
+const TYPE_FIELDS = ['graphics.bannerStyle', 'modules', 'staffRoles', 'communityRoles', 'special.items', 'special.options', 'special.layout', 'special.extras', 'security.automod', 'content.community', 'onboarding.enabled'];
 
 /**
  * Przelicza domyślne wartości pól, których użytkownik nie ruszał.
@@ -201,7 +204,7 @@ function createAnswers(type = 'community') {
     content: { panels: [...ALL_PANELS], community: 'full', embedColor: 'palette', sender: 'server' },
     onboarding: { enabled: false, groups: [], required: false },
     bots: [],
-    graphics: { banners: true, icon: true, emojiPack: true },
+    graphics: { banners: true, icon: true, emojiPack: true, bannerStyle: DEFAULT_BANNER_STYLE },
     texts: {
       ruleSections: ['general', 'behaviour', 'content', 'voice', 'profile', 'type', 'punishments'],
       punishments: 'ladder',

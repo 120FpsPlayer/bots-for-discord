@@ -23,6 +23,28 @@ try {
 
 const FONT = 'Kreator Sans';
 const FONT_BOLD = 'Kreator Sans Bold';
+
+/**
+ * Czcionki banerów (assets/fonts, licencja SIL OFL). Nazwa rodziny → plik.
+ * Brakujące znaki (np. ramki ╭├ w nazwach) dobierane są automatycznie z DejaVu Sans.
+ */
+const DISPLAY_FONTS = {
+  'KS Chakra Bold': 'ChakraPetch_700Bold.ttf',
+  'KS Chakra': 'ChakraPetch_500Medium.ttf',
+  'KS Exo Bold': 'Exo2_800ExtraBold.ttf',
+  'KS Exo Black Italic': 'Exo2_900Black_Italic.ttf',
+  'KS Bebas': 'BebasNeue_400Regular.ttf',
+  'KS Oswald Light': 'Oswald_300Light.ttf',
+  'KS Oswald': 'Oswald_500Medium.ttf',
+  'KS Cinzel Black': 'Cinzel_900Black.ttf',
+  'KS Cinzel Bold': 'Cinzel_700Bold.ttf',
+  'KS Pixel': 'PressStart2P_400Regular.ttf',
+  'KS Montserrat Black': 'Montserrat_800ExtraBold.ttf',
+  'KS Montserrat Light': 'Montserrat_300Light.ttf',
+  'KS Montserrat': 'Montserrat_500Medium.ttf',
+  'KS Righteous': 'Righteous_400Regular.ttf',
+};
+const FONTS_DIR = path.join(__dirname, '..', '..', 'assets', 'fonts');
 let ready = null;
 let emojiDir = null;
 
@@ -37,6 +59,11 @@ function init() {
     const fonts = path.join(path.dirname(require.resolve('dejavu-fonts-ttf/package.json')), 'ttf');
     lib.GlobalFonts.registerFromPath(path.join(fonts, 'DejaVuSans.ttf'), FONT);
     lib.GlobalFonts.registerFromPath(path.join(fonts, 'DejaVuSans-Bold.ttf'), FONT_BOLD);
+    for (const [family, file] of Object.entries(DISPLAY_FONTS)) {
+      const full = path.join(FONTS_DIR, file);
+      if (fs.existsSync(full)) lib.GlobalFonts.registerFromPath(full, family);
+      else log.warn(`Brak czcionki ${file} – banery użyją czcionki zapasowej.`);
+    }
     emojiDir = path.dirname(require.resolve('@twemoji/svg/package.json'));
     ready = true;
   } catch (err) {
@@ -76,7 +103,11 @@ async function loadEmoji(g) {
   let img = null;
   try {
     const file = path.join(emojiDir, emojiFileName(g));
-    if (fs.existsSync(file)) img = await lib.loadImage(fs.readFileSync(file));
+    // SVG ma 36×36 – rasteryzujemy w 512×512, żeby duże emoji (np. na banerach) były ostre.
+    if (fs.existsSync(file)) {
+      const svg = fs.readFileSync(file, 'utf8').replace(/^<svg(?![^>]*\swidth=)/, '<svg width="512" height="512"');
+      img = await lib.loadImage(Buffer.from(svg));
+    }
   } catch {
     img = null;
   }
@@ -112,14 +143,19 @@ function runsOf(text) {
   return runs;
 }
 
-const fontSpec = (size, bold) => `${size}px "${bold ? FONT_BOLD : FONT}"`;
+/** Czcionka CSS: wybrana rodzina + DejaVu jako zapas dla znaków, których ona nie ma. */
+const fontSpec = (size, bold, family = null) => (family
+  ? `${size}px "${family}", "${bold ? FONT_BOLD : FONT}", "${FONT}"`
+  : `${size}px "${bold ? FONT_BOLD : FONT}"`);
 const emojiBox = (size) => Math.round(size * 1.18);
 
-function measureText(ctx, text, { size = 16, bold = false } = {}) {
-  ctx.font = fontSpec(size, bold);
+function measureText(ctx, text, { size = 16, bold = false, family = null, spacing = 0 } = {}) {
+  ctx.font = fontSpec(size, bold, family);
+  ctx.letterSpacing = `${spacing}px`;
   let w = 0;
-  for (const r of runsOf(text)) w += r.emoji ? emojiBox(size) + 2 : ctx.measureText(r.text).width;
-  return w;
+  for (const r of runsOf(text)) w += r.emoji ? emojiBox(size) + 2 + spacing : ctx.measureText(r.text).width;
+  ctx.letterSpacing = '0px';
+  return Math.max(0, w - spacing);
 }
 
 /** Przycina tekst do szerokości (z „…”). */
@@ -134,26 +170,43 @@ function fitText(ctx, text, maxWidth, opts) {
  * Rysuje tekst z emoji (emoji jako obrazki Twemoji). y = linia bazowa. Zwraca szerokość.
  * Emoji muszą być wcześniej wczytane przez preloadEmojis().
  */
-function drawText(ctx, text, x, y, { size = 16, bold = false, color = '#dbdee1', maxWidth = Infinity, align = 'left' } = {}) {
-  const opts = { size, bold };
+/**
+ * Rysuje tekst z emoji. Opcje: family (czcionka z DISPLAY_FONTS), spacing (odstęp liter w px),
+ * stroke { color, width } – obrys pod tekstem, color może być gradientem.
+ */
+function drawText(ctx, text, x, y, {
+  size = 16, bold = false, color = '#dbdee1', maxWidth = Infinity, align = 'left', family = null, spacing = 0, stroke = null,
+} = {}) {
+  const opts = { size, bold, family, spacing };
   const shown = Number.isFinite(maxWidth) ? fitText(ctx, text, maxWidth, opts) : text;
   const width = measureText(ctx, shown, opts);
   let cx = align === 'center' ? x - width / 2 : align === 'right' ? x - width : x;
-  ctx.font = fontSpec(size, bold);
-  ctx.fillStyle = color;
+  ctx.font = fontSpec(size, bold, family);
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
+  ctx.letterSpacing = `${spacing}px`;
   for (const r of runsOf(shown)) {
     if (r.emoji) {
       const box = emojiBox(size);
       const img = emojiCache.get(r.emoji);
       if (img) ctx.drawImage(img, cx + 1, y - box * 0.84, box, box);
-      cx += box + 2;
+      cx += box + 2 + spacing;
     } else {
+      if (stroke) {
+        ctx.save();
+        ctx.shadowColor = 'transparent';
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = stroke.width;
+        ctx.strokeStyle = stroke.color;
+        ctx.strokeText(r.text, cx, y);
+        ctx.restore();
+      }
+      ctx.fillStyle = color;
       ctx.fillText(r.text, cx, y);
       cx += ctx.measureText(r.text).width;
     }
   }
+  ctx.letterSpacing = '0px';
   return width;
 }
 
@@ -211,5 +264,5 @@ function initials(name) {
 
 module.exports = {
   available, unavailableReason, createCanvas, loadImage, preloadEmojis, drawText, measureText, fitText,
-  runsOf, emojiFileName, isEmoji, hex, shade, luminance, roundRect, initials, FONT, FONT_BOLD, fontSpec,
+  runsOf, emojiFileName, isEmoji, hex, shade, luminance, roundRect, initials, FONT, FONT_BOLD, fontSpec, DISPLAY_FONTS,
 };

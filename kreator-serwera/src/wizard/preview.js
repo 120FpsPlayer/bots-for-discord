@@ -8,6 +8,7 @@ const { SIZES, AGES, LANGUAGES } = require('./defaults');
 const { COMMUNITY_OPTIONS } = require('./steps');
 const { field, clip, formatDuration } = require('./ui');
 const { describeAccess } = require('../builder/permissions');
+const { BANNER_STYLES } = require('../graphics/banners');
 
 const KIND_ICON = { text: '#', announcement: '📢', forum: '🗂️', voice: '🔊', stage: '🎤' };
 
@@ -89,6 +90,7 @@ function summaryFields(session, bp) {
       `Kanały: ${CHANNEL_STYLES[a.style.channel].label}`,
       `Kategorie: ${CATEGORY_STYLES[a.style.category].label}`,
       `Paleta: ${PALETTES[a.style.palette].emoji} ${PALETTES[a.style.palette].label}`,
+      bp.meta.graphics?.banners ? `Banery: ${BANNER_STYLES[bp.meta.graphics.bannerStyle]?.emoji || '🏞️'} ${BANNER_STYLES[bp.meta.graphics.bannerStyle]?.label || '—'}` : 'Banery: ❌',
     ].join('\n'), true),
     field('📊 Struktura', [
       `📁 **${st.categories}** kategorii`,

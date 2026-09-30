@@ -12,6 +12,7 @@ const P = require('./permissions');
 const N = require('./naming');
 const { L, tr, fill } = require('../utils/i18n');
 const { BOTS } = require('../data/bots');
+const { BANNER_STYLES, DEFAULT_BANNER_STYLE } = require('../graphics/banners');
 
 /**
  * Zamienia odpowiedzi z kreatora na „blueprint” – kompletny, niezależny od Discorda
@@ -769,6 +770,7 @@ function buildBlueprint(input, env = {}) {
         banners: Boolean(answers.graphics?.banners),
         icon: Boolean(answers.graphics?.icon),
         emojiPack: Boolean(answers.graphics?.emojiPack),
+        bannerStyle: BANNER_STYLES[answers.graphics?.bannerStyle] ? answers.graphics.bannerStyle : DEFAULT_BANNER_STYLE,
       },
       leave: ['now', 'after'].includes(answers.mode?.leave) ? answers.mode.leave : 'no',
       guide: answers.mode?.guide !== false,

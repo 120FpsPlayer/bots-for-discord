@@ -5,6 +5,8 @@ const { BOTS, BOT_CATEGORIES, BOT_MENUS } = require('../data/bots');
 const { MODULES } = require('../data/modules');
 const { allows, lockLabel } = require('../access/packages');
 const gfx = require('../graphics/engine');
+const { BANNER_STYLES, DEFAULT_BANNER_STYLE } = require('../graphics/banners');
+const { PALETTES, EMBED_COLORS } = require('../data/styles');
 const { tr } = require('../utils/i18n');
 const { markTouched } = require('./defaults');
 const {
@@ -153,20 +155,33 @@ const graphicsStep = {
   id: 'graphics',
   emoji: '🎨',
   title: 'Grafika i nadawca wiadomości',
-  intro: 'Nadaj serwerowi dopracowany wygląd: **banery** nad regulaminem i informacjami, **ikona** z inicjałów (gdy nie masz logo) i **paczka emoji** w kolorach serwera. Wiadomości mogą przyjść **jako serwer** (nazwa i logo serwera) – wtedy po usunięciu bota nic nie zdradza, że serwer zbudował kreator.',
+  intro: 'Nadaj serwerowi dopracowany wygląd: **banery** nad regulaminem i informacjami (10 stylów – od futurystycznego po realistyczny), **ikona** z inicjałów (gdy nie masz logo) i **paczka emoji** w kolorach serwera. Wiadomości mogą przyjść **jako serwer** (nazwa i logo serwera) – po usunięciu bota nic nie zdradza, że serwer zbudował kreator.',
   render(s) {
     const a = s.answers;
     const g = a.graphics || {};
     const sender = SENDERS[a.content.sender] || SENDERS.server;
     const canDraw = gfx.available();
+    const style = BANNER_STYLES[g.bannerStyle] ? g.bannerStyle : DEFAULT_BANNER_STYLE;
+    const showBanner = canDraw && g.banners && !locked(s, 'banners');
     return {
       fields: [
         field('✉️ Nadawca wiadomości', `${sender.emoji} ${sender.label}`, true),
         field('🎨 Grafiki', Object.entries(GFX).map(([k, d]) => `${g[k] && !locked(s, k) ? '✅' : '❌'} ${d.emoji} ${d.label}${locked(s, k) ? ` (${lockLabel(k)})` : ''}`).join('\n'), true),
+        g.banners && !locked(s, 'banners') ? field('🏞️ Styl banerów', `${BANNER_STYLES[style].emoji} **${BANNER_STYLES[style].label}**\n${BANNER_STYLES[style].description}`, true) : null,
         a.basics.iconUrl ? field('🖼️ Logo', 'Podane w kroku „Nazwa i opis” – zostanie ustawione jako ikona serwera.') : null,
         !canDraw ? field('⚠️ Grafika niedostępna', `Biblioteka graficzna nie działa na tym hostingu – banery, ikona i emoji zostaną pominięte (${gfx.unavailableReason() || 'brak'}).`) : null,
-        field('👁️ Podgląd', 'Kliknij **Podgląd serwera**, aby zobaczyć obrazek z kanałami i rolami, albo **Przykładowy baner**.'),
+        field('👁️ Podgląd', showBanner
+          ? 'Poniżej widzisz baner w wybranym stylu i kolorze serwera. **Porównaj style** pokaże wszystkie 10 obok siebie.'
+          : 'Kliknij **Podgląd serwera**, aby zobaczyć obrazek z kanałami i rolami.'),
       ].filter(Boolean),
+      // Podgląd baneru dołączany do embedu (router rysuje go asynchronicznie).
+      image: showBanner ? {
+        style,
+        title: a.language === 'en' ? 'Rules' : 'Regulamin',
+        subtitle: a.basics.name || s.env?.guildName || '',
+        emoji: '📜',
+        color: bannerColor(a),
+      } : null,
       rows: [
         selectRow(cid(s, 's', 'sender'), {
           placeholder: '✉️ Kto wysyła wiadomości?',
@@ -182,15 +197,25 @@ const graphicsStep = {
             description: d.description,
           })),
         }),
+        selectRow(cid(s, 's', 'bstyle'), {
+          placeholder: '🏞️ Styl banerów…',
+          disabled: !g.banners || locked(s, 'banners'),
+          options: Object.entries(BANNER_STYLES).map(([value, d]) => ({ value, label: d.label, description: d.description, emoji: d.emoji, default: value === style })),
+        }),
         row(
+          button(cid(s, 'n', 'pgal'), 'Porównaj style', { emoji: '🎨', disabled: !canDraw || locked(s, 'banners') }),
           button(cid(s, 'n', 'pimg'), 'Podgląd serwera', { emoji: '🖼️', disabled: !canDraw }),
-          button(cid(s, 'n', 'pban'), 'Przykładowy baner', { emoji: '🏞️', disabled: !canDraw }),
         ),
       ],
     };
   },
   select: {
     sender(s, [v]) { s.answers.content.sender = v === 'bot' ? 'bot' : 'server'; },
+    bstyle(s, [v]) {
+      if (!BANNER_STYLES[v]) return;
+      s.answers.graphics.bannerStyle = v;
+      markTouched(s.answers, 'graphics.bannerStyle');
+    },
     gfx(s, values) {
       const g = s.answers.graphics;
       const blocked = [];
@@ -204,6 +229,13 @@ const graphicsStep = {
   },
 };
 
+/** Kolor banerów = kolor wiadomości serwera (paleta albo wybrany kolor embedów). */
+function bannerColor(a) {
+  const key = a.content?.embedColor;
+  if (key && key !== 'palette' && EMBED_COLORS[key]) return EMBED_COLORS[key].color;
+  return (PALETTES[a.style?.palette] || PALETTES.modern).embed;
+}
+
 // ───────────────────────────── TRYB: wyjście bota i przewodnik ─────────────────────────────
 
 const LEAVE_OPTIONS = {
@@ -213,5 +245,5 @@ const LEAVE_OPTIONS = {
 };
 
 module.exports = {
-  onboardingStep, botsStep, graphicsStep, LEAVE_OPTIONS, SENDERS, GFX, tr,
+  onboardingStep, botsStep, graphicsStep, LEAVE_OPTIONS, SENDERS, GFX, bannerColor, tr,
 };

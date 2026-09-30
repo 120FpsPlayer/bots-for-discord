@@ -587,8 +587,9 @@ async function executeBlueprint({ guild, blueprint: bp, answers, invokerId, keep
       const spec = art.bannerFor(kind, bp.meta.language);
       if (!spec) return null;
       if (!banners.has(kind)) {
-        const buffer = await attempt(`Baner ${spec.title}`, () => art.renderBanner({ ...spec, subtitle: displayName, color: bp.meta.embedColor }), { warn: true });
-        banners.set(kind, buffer ? { attachment: buffer, name: `baner-${kind.replace(/[^\w-]/g, '')}.png` } : null);
+        const style = graphics.bannerStyle;
+        const buffer = await attempt(`Baner ${spec.title}`, () => art.renderBanner({ ...spec, subtitle: displayName, color: bp.meta.embedColor, style }), { warn: true });
+        banners.set(kind, buffer ? { attachment: buffer, name: `baner-${kind.replace(/[^\w-]/g, '')}.${art.bannerExt(style)}` } : null);
       }
       return banners.get(kind);
     };

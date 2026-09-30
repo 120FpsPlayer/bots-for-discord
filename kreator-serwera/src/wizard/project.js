@@ -10,6 +10,7 @@ const { STAFF_ROLES, ROLE_GROUP_OPTIONS } = require('../data/roles');
 const { SIZES, AGES, LANGUAGES, createAnswers, computeDependentDefaults } = require('./defaults');
 const { isBackup, sanitizeBackup } = require('../cleanup/snapshot');
 const { BOTS } = require('../data/bots');
+const { BANNER_STYLES } = require('../graphics/banners');
 const { ONBOARDING_GROUPS } = require('../builder/blueprint');
 
 /**
@@ -139,7 +140,12 @@ function sanitizeAnswers(raw) {
   };
   a.bots = subset(src.bots, BOTS) ?? [];
   const gfx = src.graphics || {};
-  a.graphics = { banners: bool(gfx.banners, true), icon: bool(gfx.icon, true), emojiPack: bool(gfx.emojiPack, true) };
+  a.graphics = {
+    banners: bool(gfx.banners, true),
+    icon: bool(gfx.icon, true),
+    emojiPack: bool(gfx.emojiPack, true),
+    bannerStyle: oneOf(gfx.bannerStyle, BANNER_STYLES, defaults['graphics.bannerStyle']),
+  };
 
   const tx = src.texts || {};
   const ann = tx.announcement;

@@ -33,6 +33,8 @@ const { createInteraction, componentsOf } = require('./helpers/fakeInteraction')
 
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const isPng = (buf) => Buffer.isBuffer(buf) && buf.subarray(0, 4).equals(PNG);
+const isJpeg = (buf) => Buffer.isBuffer(buf) && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+const isImage = (buf) => isPng(buf) || isJpeg(buf);
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kreator-'));
 
 /** Serwer „na sprzedaż” z wszystkimi dodatkami: onboarding, boty, grafiki, wiadomości jako serwer. */
@@ -69,7 +71,7 @@ test('grafika: podgląd PNG dla każdego typu serwera, banery, ikona, paczka emo
   }
   for (const [kind, [emoji, title]] of Object.entries(BANNERS)) {
     const png = await renderBanner({ title, subtitle: 'Bardzo długa nazwa serwera, która musi się zmieścić na banerze bez wychodzenia poza krawędź', emoji, color: 0x1abc9c });
-    assert.ok(isPng(png), `baner ${kind}`);
+    assert.ok(isImage(png), `baner ${kind}`);
   }
   assert.ok(isPng(await renderIcon({ name: '⛏️ CraftLand', color: 0xe67e22 })));
   assert.ok(isPng(await renderIcon({ name: '🎮🎮', color: 0xe67e22, emoji: '🎮' })), 'ikona bez liter – z emoji');
@@ -189,7 +191,8 @@ test('budowa: onboarding, wiadomości jako serwer (webhooki), banery, ikona z in
   assert.ok(guild.webhooks.every((h) => h.name === 'Kraina Graczy' && isPng(h.avatar)), 'nazwa i ikona serwera');
   const rules = guild.channels.cache.get(result.channels.rules).messages;
   assert.ok(rules.every((m) => m.author.webhook), 'regulamin wysłany jako serwer');
-  assert.ok(isPng(rules[0].files[0].attachment) && !rules[0].embeds.length, 'najpierw baner, potem treść');
+  assert.ok(isImage(rules[0].files[0].attachment) && !rules[0].embeds.length, 'najpierw baner, potem treść');
+  assert.match(rules[0].files[0].name, /^baner-rules\.jpg$/, 'styl esport → JPEG');
   assert.ok(rules[1].embeds.length);
   const forum = guild.channels.cache.get(result.channels.suggestions);
   assert.ok(forum.threadsCreated[0].pinned && forum.threadsCreated[0].message.files.length === 1, 'forum: baner w pierwszym poście');
@@ -411,7 +414,7 @@ test('podgląd obrazkiem i przykładowy baner z podsumowania / kroku „Grafika�
   assert.ok(isPng(p.state.edits[0].files[0].attachment));
   const b = createInteraction({ guild, userId: '1', customId: `wz:${s.id}:n:pban` });
   await wizard.handle(b);
-  assert.ok(isPng(b.state.edits[0].files[0].attachment));
+  assert.ok(isImage(b.state.edits[0].files[0].attachment));
 });
 
 // ───────────── Po budowie: przewodnik, wyjście bota ─────────────
@@ -582,4 +585,104 @@ test('webhook: nazwa bez „discord”/„clyde”, kanał bez webhooków → wi
     FakeChannel.prototype.createWebhook = FakeChannel.prototype.createWebhookOriginal;
   }
   assert.ok(ChannelType.GuildText !== undefined);
+});
+
+// ───────────── Style banerów ─────────────
+
+const { BANNER_STYLES, TYPE_BANNER_STYLES, renderStyledBanner, renderBannerGallery, bannerExt } = require('../src/graphics/banners');
+
+test('style banerów: każdy styl × kolory × długie/krótkie tytuły, emoji w nazwie, powtarzalność', async () => {
+  const cases = [
+    { title: 'FAQ', subtitle: '', emoji: '❓', color: 0x99aab5 },
+    { title: 'Poradnik ekipy', subtitle: '⛏️ Bardzo długa nazwa serwera ╭ z ozdobnikami ・ i emoji 🎮 która musi się zmieścić', emoji: '🛡️', color: 0xe91e63 },
+    { title: 'Ogłoszenie', subtitle: 'Żółć Łódź', emoji: '📢', color: 0x000000 },
+  ];
+  for (const style of Object.keys(BANNER_STYLES)) {
+    for (const c of cases) {
+      const buf = await renderStyledBanner({ style, ...c });
+      assert.ok(bannerExt(style) === 'png' ? isPng(buf) : isJpeg(buf), `${style}: format`);
+      assert.ok(buf.length > 10_000 && buf.length < 1_500_000, `${style}: rozmiar ${buf.length}`);
+    }
+    const a = await renderStyledBanner({ style, title: 'Regulamin', subtitle: 'X', color: 0x123456 });
+    const b = await renderStyledBanner({ style, title: 'Regulamin', subtitle: 'X', color: 0x123456 });
+    assert.ok(a.equals(b), `${style}: ten sam baner przy tych samych danych`);
+  }
+  const small = await renderStyledBanner({ style: 'kosmos', title: 'Info', width: 600 });
+  assert.ok(isJpeg(small));
+  for (const [type, style] of Object.entries(TYPE_BANNER_STYLES)) {
+    assert.ok(SERVER_TYPES[type], `typ ${type} istnieje`);
+    assert.ok(BANNER_STYLES[style], `${type}: styl ${style}`);
+  }
+  assert.equal(bannerExt('pixel'), 'png');
+  assert.equal(bannerExt('neon'), 'jpg');
+  const gallery = await renderBannerGallery({ title: 'Regulamin', subtitle: 'Test', emoji: '📜', color: 0x2ecc71, selected: 'neon' });
+  assert.ok(isJpeg(gallery) && gallery.length < 3_000_000);
+});
+
+test('krok „Grafika”: wybór stylu, podgląd baneru w embedzie, galeria stylów; styl trafia do budowy', async () => {
+  const { wizard, store } = wizardSetup({ seller: '1' });
+  const guild = new FakeGuild({ name: 'Arena', ownerId: '1' });
+  await wizard.start(createInteraction({ guild, userId: '1', kind: 'command' }));
+  const s = store.get(guild.id);
+  s.answers = createAnswers('minecraft');
+  assert.equal(s.answers.graphics.bannerStyle, 'pixel', 'Minecraft → styl pikselowy domyślnie');
+  s.typeChosen = true;
+  s.step = 'graphics';
+
+  const frame = await wizard.view(s);
+  assert.equal(frame.embeds[0].data.image.url, 'attachment://podglad-baneru.png');
+  assert.equal(frame.files[0].name, 'podglad-baneru.png');
+  assert.deepEqual(frame.attachments, [], 'stary podgląd jest usuwany');
+  const select = componentsOf(frame).find((c) => c.custom_id?.endsWith(':s:bstyle'));
+  assert.equal(select.options.length, Object.keys(BANNER_STYLES).length);
+  assert.equal(select.options.find((o) => o.default).value, 'pixel');
+
+  const pick = createInteraction({ guild, userId: '1', customId: select.custom_id, values: ['futurystyczny'] });
+  await wizard.handle(pick);
+  const updated = pick.state.updates[0];
+  assert.equal(s.answers.graphics.bannerStyle, 'futurystyczny');
+  assert.equal(updated.embeds[0].data.image.url, 'attachment://podglad-baneru.jpg');
+  assert.ok(isJpeg(updated.files[0].attachment));
+  assert.ok(updated.embeds[0].data.fields.some((f) => f.value.includes('Futurystyczny')));
+
+  // Przejście do innego kroku usuwa obrazek z wiadomości
+  const next = createInteraction({ guild, userId: '1', customId: `wz:${s.id}:n:next` });
+  await wizard.handle(next);
+  assert.deepEqual(next.state.updates[0].attachments, []);
+  assert.equal(next.state.updates[0].files, undefined);
+  assert.equal(next.state.updates[0].embeds[0].data.image, undefined);
+
+  // Galeria wszystkich stylów
+  const gal = createInteraction({ guild, userId: '1', customId: `wz:${s.id}:n:pgal` });
+  await wizard.handle(gal);
+  assert.ok(isJpeg(gal.state.edits[0].files[0].attachment));
+  assert.match(gal.state.edits[0].content, /Wszystkie style banerów/);
+
+  // Wyłączone banery → bez obrazka i z zablokowanym menu stylu
+  s.step = 'graphics';
+  s.answers.graphics.banners = false;
+  const off = await wizard.view(s);
+  assert.equal(off.files, undefined);
+  assert.equal(componentsOf(off).find((c) => c.custom_id?.endsWith(':s:bstyle')).disabled, true);
+
+  // Styl trafia do blueprintu i projekt z plikiem go zachowuje
+  s.answers.graphics.banners = true;
+  s.step = 'summary';
+  assert.equal(wizard.render(s) && s.blueprint.meta.graphics.bannerStyle, 'futurystyczny');
+  assert.equal(sanitizeAnswers({ answers: s.answers }).graphics.bannerStyle, 'futurystyczny');
+  assert.equal(sanitizeAnswers({ answers: { ...s.answers, graphics: { bannerStyle: 'zly-styl' } } }).graphics.bannerStyle, 'pixel');
+});
+
+test('pakiet bez banerów: menu stylu zablokowane, bez podglądu', async () => {
+  const { codes, wizard, store } = wizardSetup();
+  const [{ code }] = codes.generate({ pkg: 'standard' });
+  const guild = new FakeGuild({ name: 'A', ownerId: '1' });
+  await wizard.start(createInteraction({ guild, userId: '1', kind: 'command', stringOptions: { kod: code } }));
+  const s = store.get(guild.id);
+  s.typeChosen = true;
+  s.step = 'graphics';
+  const frame = await wizard.view(s);
+  assert.equal(frame.files, undefined);
+  assert.equal(componentsOf(frame).find((c) => c.custom_id?.endsWith(':s:bstyle')).disabled, true);
+  assert.equal(componentsOf(frame).find((c) => c.custom_id?.endsWith(':n:pgal')).disabled, true);
 });

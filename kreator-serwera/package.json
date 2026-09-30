@@ -1,6 +1,6 @@
 {
   "name": "kreator-serwera",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Bot Discord do tworzenia serwerów na sprzedaż: /stworz (kody dostępu z pakietami i szablonami) buduje cały serwer – role, uprawnienia, kanały, onboarding, banery, emoji; /usun czyści serwer z kopią zapasową.",
   "main": "index.js",
   "private": true,

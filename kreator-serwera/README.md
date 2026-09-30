@@ -16,7 +16,11 @@ a o każdym użyciu kodu i każdej budowie bot może powiadomić Cię na Twoim D
 
 | Podgląd serwera (obrazek) | Baner nad regulaminem | Ikona z inicjałów i paczka emoji |
 |---|---|---|
-| ![Podgląd](docs/przyklad-podglad.png) | ![Baner](docs/przyklad-baner.png) | ![Ikona i emoji](docs/przyklad-ikona-emoji.png) |
+| ![Podgląd](docs/przyklad-podglad.png) | ![Baner](docs/przyklad-baner.jpg) | ![Ikona i emoji](docs/przyklad-ikona-emoji.png) |
+
+**10 stylów banerów** do wyboru (każdy w kolorze serwera, z własną czcionką):
+
+![Style banerów](docs/style-banerow.jpg)
 
 ---
 
@@ -47,7 +51,7 @@ a o każdym użyciu kodu i każdej budowie bot może powiadomić Cię na Twoim D
 | ♻️ **Kopia zapasowa i przywracanie** | przed czyszczeniem bot wysyła plik kopii (także w wiadomości prywatnej); `/stworz projekt:<kopia>` odtwarza role, kanały, uprawnienia i AutoMod 1:1 |
 | 🧭 **Onboarding Discorda** | pytania przy wejściu na serwer („W co grasz?”, „Jaki kolor nicku?”, „Jakie powiadomienia?”, platformy, wiek, region) – **Discord sam nadaje role i pokazuje kanały**, bez żadnego bota; wybór gry odsłania jej kanały |
 | 🏷️ **Wiadomości jako serwer** | regulamin, informacje i FAQ przychodzą z **nazwą i logo serwera** (przez webhooki, usuwane po budowie) – po wyrzuceniu bota nic nie zdradza, kto zbudował serwer |
-| 🏞️ **Banery** | grafika z tytułem w kolorach serwera nad regulaminem, informacjami, FAQ, opisem ról, powitaniem… |
+| 🏞️ **Banery – 10 stylów** | nowoczesny, futurystyczny (cyber/HUD), neon/synthwave, realistyczny (kinowy krajobraz), kosmiczny, esport, pikselowy (Minecraft), fantasy (pergamin z pieczęcią), szkło, elegancki – nad regulaminem, informacjami, FAQ, opisem ról, powitaniem…; **podgląd wybranego stylu od razu w panelu** i galeria wszystkich stylów do porównania; styl dobierany automatycznie do typu serwera |
 | 🖼️ **Logo i ikona** | logo wgrywasz plikiem prosto w formularzu (albo linkiem); bez logo – ikona z inicjałów nazwy w kolorze serwera |
 | 😀 **Paczka emoji serwera** | statusy (online/zaraz/zajęty/offline), ✔ ✖ ⚠ ℹ, strzałka, kropka i odznaki pod typ serwera (np. GG, MVP, MC, PVP, NEW, HOT, VIP) – w kolorze serwera |
 | 🤖 **Popularne boty** | 22 boty (MEE6, Arcane, Dyno, Carl-bot, ProBot, Ticket Tool, Double Counter, Captcha.bot, Wick, Jockie Music, DISBOARD, GiveawayBot, Sesh, Dank Memer…) – kreator tworzy pod nie kanały (#awanse, #tickety, #bump, #gry-botów…) i rolę „Boty”, a po budowie daje **linki „Dodaj bota” z wybranym serwerem** i instrukcję, co ustawić |
@@ -205,7 +209,7 @@ Wpisz **`/stworz`** na serwerze (komenda jest widoczna tylko dla administratoró
 | 14. 📁 Własne kanały | nowe kategorie albo kanały w istniejących sekcjach, z wybranym dostępem |
 | 15. 🤖 Popularne boty | 22 boty w dwóch menu – kreator doda pod nie kanały i rolę „Boty” |
 | 16. 📨 Wiadomości | co bot ma opublikować, tryb Społeczności, kolor wiadomości |
-| 17. 🎨 Grafika i nadawca | wiadomości jako serwer / jako bot, banery, ikona z inicjałów, paczka emoji, **podgląd serwera** i przykładowy baner |
+| 17. 🎨 Grafika i nadawca | wiadomości jako serwer / jako bot, banery, ikona z inicjałów, paczka emoji, **styl banerów (10 do wyboru, podgląd w panelu, „Porównaj style”)**, podgląd serwera |
 | 18. 📜 Regulamin i treści | paragrafy regulaminu, system kar, własne zasady, własne FAQ, pierwsze ogłoszenie |
 | 19. ⚙️ Tryb budowy | dodaj / wyczyść i zbuduj od nowa, nadanie ról, **co bot robi po budowie** (zostaje / wychodzi po 2 h / od razu), przewodnik w DM |
 | 📋 Podsumowanie | statystyki, uwagi, podgląd kanałów i ról, **🖼️ podgląd obrazkiem**, **Zapisz projekt**, **Zbuduj serwer** (sprzedawca: **Zapisz jako szablon**) |
@@ -322,7 +326,7 @@ kreator-serwera/
 │   │   ├── panel.js            # panel czyszczenia (wybór, potwierdzenie, postęp, raport)
 │   │   ├── cleaner.js          # silnik czyszczenia
 │   │   └── snapshot.js         # kopia zapasowa serwera i jej wczytywanie
-│   ├── graphics/               # obrazki: podgląd serwera, banery, ikona, paczka emoji
+│   ├── graphics/               # obrazki: podgląd serwera, banery (banners.js – 10 stylów), ikona, paczka emoji
 │   ├── wizard/                 # panel kreatora
 │   │   ├── router.js           # ekrany i nawigacja (kody, pakiety, szablony, podgląd)
 │   │   ├── steps.js            # kroki z pytaniami (+ stepsExtra.js: onboarding, boty, grafika)
@@ -344,6 +348,8 @@ kreator-serwera/
 │   ├── data/                   # katalogi: typy serwerów, moduły, role, style, AutoMod, popularne boty (bots.js)
 │   ├── access/                 # kody, pakiety, szablony, powiadomienia, komendy konsoli
 │   └── utils/                  # logger, tłumaczenia PL/EN
+├── assets/fonts/               # czcionki banerów (SIL OFL)
+├── docs/                       # przykładowe obrazki do README
 ├── test/                       # testy (atrapa Discorda – bez tokenu)
 ├── .env.example
 ├── start.bat / start.sh
@@ -371,3 +377,4 @@ MIT – możesz dowolnie używać i modyfikować.
 
 Grafiki emoji: [Twemoji](https://github.com/jdecked/twemoji) © Twitter/X i współtwórcy – licencja CC-BY 4.0.
 Czcionka: [DejaVu Sans](https://dejavu-fonts.github.io/) – wolna licencja (Bitstream Vera / Arev).
+Czcionki banerów (Chakra Petch, Exo 2, Bebas Neue, Oswald, Cinzel, Press Start 2P, Montserrat, Righteous) – SIL Open Font License 1.1, szczegóły w `assets/fonts/`.

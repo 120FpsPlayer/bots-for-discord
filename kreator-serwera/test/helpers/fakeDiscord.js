@@ -11,6 +11,7 @@ const { ChannelType, Collection, PermissionsBitField, PermissionFlagsBits, Overw
 
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const isPng = (buf) => Buffer.isBuffer(buf) && buf.subarray(0, 4).equals(PNG_SIGNATURE);
+const isJpeg = (buf) => Buffer.isBuffer(buf) && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
 
 let seq = 100000000000000000n;
 const nextId = () => String(++seq);
@@ -64,8 +65,9 @@ function validateMessage(body) {
   if (embeds.length > 10) throw apiError(50035, 'too many embeds');
   if (files.length > 10) throw apiError(50035, 'too many files');
   for (const f of files) {
-    if (!isPng(f.attachment)) throw apiError(50035, `file ${f.name} is not a PNG`);
-    if (!/^[\w.-]+\.png$/.test(f.name || '')) throw apiError(50035, `bad file name ${f.name}`);
+    if (!isPng(f.attachment) && !isJpeg(f.attachment)) throw apiError(50035, `file ${f.name} is not a PNG/JPEG`);
+    if (!/^[\w.-]+\.(png|jpg)$/.test(f.name || '')) throw apiError(50035, `bad file name ${f.name}`);
+    if (isJpeg(f.attachment) !== f.name.endsWith('.jpg')) throw apiError(50035, `file ${f.name}: extension does not match content`);
     if (f.attachment.length > 10 * 1024 * 1024) throw apiError(40005, 'file too large');
   }
   if (!embeds.length && !files.length && !body.content) throw apiError(50006, 'Cannot send an empty message');

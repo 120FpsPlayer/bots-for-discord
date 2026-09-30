@@ -1,6 +1,7 @@
 'use strict';
 
 const E = require('./engine');
+const { renderStyledBanner, DEFAULT_BANNER_STYLE, bannerExt } = require('./banners');
 
 /**
  * Grafiki tworzone podczas budowy: banery nad treściami (regulamin, informacje…),
@@ -31,74 +32,11 @@ function bannerFor(kind, lang = 'pl') {
 }
 
 /**
- * Baner 1000×280 w kolorze serwera: gradient, ozdobne pasy, duże emoji i tytuł.
- * @returns {Promise<Buffer>} PNG
+ * Baner w wybranym stylu (patrz graphics/banners.js – 10 stylów).
+ * @returns {Promise<Buffer>} obrazek; rozszerzenie pliku: bannerExt(style)
  */
-async function renderBanner({ title, subtitle = '', emoji = '', color = 0x5865f2, width = 1000, height = 280 }) {
-  await E.preloadEmojis([emoji, title, subtitle]);
-  const canvas = E.createCanvas(width, height);
-  const ctx = canvas.getContext('2d');
-
-  const g = ctx.createLinearGradient(0, 0, width, height);
-  g.addColorStop(0, E.shade(color, 0.12));
-  g.addColorStop(0.55, E.shade(color, -0.3));
-  g.addColorStop(1, E.shade(color, -0.7));
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, width, height);
-
-  // Ozdoby: ukośne pasy i koła
-  ctx.save();
-  ctx.globalAlpha = 0.07;
-  ctx.fillStyle = '#ffffff';
-  for (let i = 0; i < width / 70 + 4; i += 1) {
-    const x = i * 70 - height;
-    ctx.beginPath();
-    ctx.moveTo(x, height); ctx.lineTo(x + 34, height); ctx.lineTo(x + 34 + height, 0); ctx.lineTo(x + height, 0);
-    ctx.fill();
-  }
-  ctx.globalAlpha = 0.08;
-  ctx.beginPath(); ctx.arc(width - 90, 40, 170, 0, Math.PI * 2); ctx.fill();
-  ctx.beginPath(); ctx.arc(width - 250, height + 60, 140, 0, Math.PI * 2); ctx.fill();
-  ctx.restore();
-
-  // Przyciemnienie dołu i pasek akcentu
-  const shadow = ctx.createLinearGradient(0, height * 0.55, 0, height);
-  shadow.addColorStop(0, 'rgba(0,0,0,0)');
-  shadow.addColorStop(1, 'rgba(0,0,0,0.35)');
-  ctx.fillStyle = shadow;
-  ctx.fillRect(0, 0, width, height);
-  ctx.fillStyle = E.shade(color, 0.35);
-  ctx.fillRect(0, height - 8, width, 8);
-
-  // Emoji w kole
-  let textX = 64;
-  if (emoji) {
-    const cx = 64 + 90;
-    const cy = height / 2;
-    ctx.fillStyle = 'rgba(255,255,255,0.14)';
-    ctx.beginPath(); ctx.arc(cx, cy, 92, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-    ctx.lineWidth = 3;
-    ctx.stroke();
-    E.drawText(ctx, emoji, cx - 58, cy + 48, { size: 100 });
-    textX = cx + 92 + 44;
-  }
-
-  // Tytuł (zmniejszany, aż się zmieści) i podtytuł
-  const maxW = width - textX - 56;
-  const upper = String(title).toLocaleUpperCase('pl');
-  let size = 76;
-  while (size > 30 && E.measureText(ctx, upper, { size, bold: true }) > maxW) size -= 2;
-  const titleY = subtitle ? height / 2 + size * 0.2 : height / 2 + size * 0.36;
-  ctx.save();
-  ctx.shadowColor = 'rgba(0,0,0,0.35)';
-  ctx.shadowBlur = 12;
-  ctx.shadowOffsetY = 4;
-  E.drawText(ctx, upper, textX, titleY, { size, bold: true, color: '#ffffff', maxWidth: maxW });
-  ctx.restore();
-  if (subtitle) E.drawText(ctx, subtitle, textX + 2, titleY + 50, { size: 28, color: 'rgba(255,255,255,0.88)', maxWidth: maxW });
-
-  return canvas.toBuffer('image/png');
+function renderBanner({ title, subtitle = '', emoji = '', color = 0x5865f2, style = DEFAULT_BANNER_STYLE }) {
+  return renderStyledBanner({ style, title, subtitle, emoji, color });
 }
 
 // ───────────── Ikona serwera ─────────────
@@ -265,4 +203,4 @@ async function renderEmojiPack({ type, color = 0x5865f2 }) {
   return out;
 }
 
-module.exports = { renderBanner, renderIcon, renderEmojiPack, bannerFor, BANNERS, TYPE_BADGES };
+module.exports = { renderBanner, renderIcon, renderEmojiPack, bannerFor, bannerExt, BANNERS, TYPE_BADGES };

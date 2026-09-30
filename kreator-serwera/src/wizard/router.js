@@ -13,6 +13,8 @@ const { slugify, ID_RE } = require('../access/templates');
 const gfx = require('../graphics/engine');
 const { renderPreview } = require('../graphics/preview');
 const { renderBanner, bannerFor } = require('../graphics/art');
+const { renderStyledBanner, renderBannerGallery, bannerExt, BANNER_STYLES, DEFAULT_BANNER_STYLE } = require('../graphics/banners');
+const { bannerColor } = require('./stepsExtra');
 const { computeStats } = require('../cleanup/snapshot');
 const { AttemptLimiter, maskCode, CODE_LENGTH } = require('../access/codes');
 const { createLogger } = require('../utils/logger');
@@ -136,6 +138,7 @@ function createWizard({
         footer,
       })],
       components: [...view.rows.slice(0, 4), navRow(s, pos, seq.length)],
+      imageSpec: view.image || null,
     };
   }
 
@@ -243,8 +246,8 @@ function createWizard({
     };
   }
 
-  function handleRestore(s, interaction, id) {
-    if (!s.restore) return interaction.update(render(s));
+  async function handleRestore(s, interaction, id) {
+    if (!s.restore) return interaction.update(await view(s));
     if (id === 'mode') {
       const mode = interaction.values[0] === 'wipe' ? 'wipe' : 'append';
       if (mode === 'wipe' && interaction.guild.ownerId !== interaction.user.id) {
@@ -256,7 +259,7 @@ function createWizard({
     } else if (id === 'opts') {
       s.restore.options = interaction.values.filter((v) => RESTORE_OPTIONS[v]);
     }
-    return interaction.update(render(s));
+    return interaction.update(await view(s));
   }
 
   function summaryFrame(s) {
@@ -324,6 +327,37 @@ function createWizard({
         button(cid(s, 'n', 'ret'), 'Wróć do podsumowania', { style: ButtonStyle.Primary, emoji: '↩️' }),
       )],
     };
+  }
+
+  // Podgląd baneru w embedzie kroku „Grafika” – obrazki trzymamy w małej pamięci podręcznej.
+  const imageCache = new Map();
+
+  /**
+   * Ramka gotowa do wysłania: dokleja obrazek (np. podgląd baneru) jako załącznik embedu
+   * i usuwa poprzedni obrazek z wiadomości (attachments: []).
+   */
+  async function view(s) {
+    const frame = render(s);
+    const spec = frame.imageSpec;
+    delete frame.imageSpec;
+    frame.attachments = [];
+    if (spec && gfx.available()) {
+      try {
+        const key = JSON.stringify(spec);
+        let buf = imageCache.get(key);
+        if (!buf) {
+          buf = await renderStyledBanner({ ...spec, width: 1000 });
+          imageCache.set(key, buf);
+          if (imageCache.size > 40) imageCache.delete(imageCache.keys().next().value);
+        }
+        const name = `podglad-baneru.${bannerExt(spec.style)}`;
+        frame.files = [new AttachmentBuilder(buf, { name })];
+        frame.embeds[0].setImage(`attachment://${name}`);
+      } catch (err) {
+        log.warn(`Podgląd baneru nieudany: ${err.message}`);
+      }
+    }
+    return frame;
   }
 
   function render(s) {
@@ -594,7 +628,7 @@ function createWizard({
       session.step = 'summary';
       session.flash = '📦 Wczytano szablon. Ustaw **nazwę, opis i logo** („Dopasuj szablon” → Nazwa i opis), wybierz tryb budowy i kliknij **Zbuduj serwer**.';
       if (!env.botAdmin) session.flash += '\n❌ Bot nie ma uprawnienia Administrator – nadaj je przed budową.';
-      return send(render(session));
+      return send(await view(session));
     }
 
     if (imported?.kind === 'backup') {
@@ -604,7 +638,7 @@ function createWizard({
       session.step = 'summary';
       if (!env.botAdmin) session.flash = '❌ Bot nie ma uprawnienia Administrator – nadaj je przed przywracaniem.';
       else if (!isOwner) session.flash = 'ℹ️ Tryb „Wyczyść i przywróć” może wybrać tylko właściciel serwera.';
-      return interaction.editReply(render(session));
+      return interaction.editReply(await view(session));
     }
 
     if (imported) {
@@ -614,7 +648,7 @@ function createWizard({
       session.step = 'summary';
       session.flash = `📥 Wczytano projekt **${imported.basics.name || 'bez nazwy'}** – sprawdź podsumowanie. Tryb budowy ustawiono na „dodaj” (czyszczenie wybierzesz ręcznie w kroku „Tryb budowy”).`;
       if (!env.botAdmin) session.flash += '\n❌ Bot nie ma uprawnienia Administrator – nadaj je przed budową.';
-      return interaction.editReply(render(session));
+      return interaction.editReply(await view(session));
     }
 
     const frame = introFrame(session);
@@ -657,7 +691,7 @@ function createWizard({
         const handler = step?.select?.[id];
         if (handler) handler(session, interaction.values);
       }
-      return interaction.update(render(session));
+      return interaction.update(await view(session));
     }
 
     // Przyciski kroku
@@ -665,7 +699,7 @@ function createWizard({
       const handler = step?.button?.[id];
       const result = handler ? handler(session, interaction) : null;
       if (result?.modal) return interaction.showModal(result.modal);
-      return interaction.update(render(session));
+      return interaction.update(await view(session));
     }
 
     // Formularze (modale)
@@ -674,8 +708,8 @@ function createWizard({
       if (id === 'tpl') return handleTemplateSave(session, interaction);
       const handler = step?.modal?.[id];
       if (handler) handler(session, interaction);
-      if (interaction.isFromMessage()) return interaction.update(render(session));
-      return interaction.reply({ ...render(session), flags: MessageFlags.Ephemeral });
+      if (interaction.isFromMessage()) return interaction.update(await view(session));
+      return interaction.reply({ ...(await view(session)), flags: MessageFlags.Ephemeral });
     }
 
     // Przywracanie kopii zapasowej
@@ -699,6 +733,8 @@ function createWizard({
         return sendPreview(s, interaction);
       case 'pban':
         return sendBannerSample(s, interaction);
+      case 'pgal':
+        return sendGallery(s, interaction);
       case 'tplsave':
         return showTemplateModal(s, interaction);
       case 'next': {
@@ -744,7 +780,7 @@ function createWizard({
       default:
         break;
     }
-    return interaction.update(render(s));
+    return interaction.update(await view(s));
   }
 
   // ───────────── Podgląd obrazkiem i przykładowy baner ─────────────
@@ -773,11 +809,35 @@ function createWizard({
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     const bp = computeBlueprint(s);
     const spec = bannerFor('rules', bp.meta.language);
-    const png = await renderBanner({ ...spec, subtitle: bp.guild.name || interaction.guild.name, color: bp.meta.embedColor });
+    const style = bp.meta.graphics?.bannerStyle || DEFAULT_BANNER_STYLE;
+    const img = await renderBanner({ ...spec, subtitle: bp.guild.name || interaction.guild.name, color: bp.meta.embedColor, style });
     return interaction.editReply({
-      content: '🏞️ **Przykładowy baner** – taki pojawi się nad regulaminem (a podobne nad informacjami, FAQ i opisem ról). Kolor zmienisz w kroku „Wygląd” lub „Wiadomości”.',
-      files: [new AttachmentBuilder(png, { name: 'baner.png' })],
+      content: `🏞️ **Przykładowy baner** (${BANNER_STYLES[style].label}) – taki pojawi się nad regulaminem, a podobne nad informacjami, FAQ i opisem ról.`,
+      files: [new AttachmentBuilder(img, { name: `baner.${bannerExt(style)}` })],
     });
+  }
+
+  /** Wszystkie style banerów na jednym obrazku – w kolorze i z nazwą tego serwera. */
+  async function sendGallery(s, interaction) {
+    if (!gfx.available()) return interaction.reply({ content: '🏞️ Banery nie działają na tym hostingu.', flags: MessageFlags.Ephemeral });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    const a = s.answers;
+    try {
+      const img = await renderBannerGallery({
+        title: a.language === 'en' ? 'Rules' : 'Regulamin',
+        subtitle: a.basics.name || interaction.guild.name,
+        emoji: '📜',
+        color: bannerColor(a),
+        selected: a.graphics?.bannerStyle,
+      });
+      return interaction.editReply({
+        content: '🎨 **Wszystkie style banerów** – w kolorze Twojego serwera. Wybierz styl w menu **„Styl banerów”** w kroku *Grafika* – podgląd w panelu od razu się zmieni.',
+        files: [new AttachmentBuilder(img, { name: 'style-banerow.jpg' })],
+      });
+    } catch (err) {
+      log.error('Galeria banerów nieudana:', err);
+      return interaction.editReply({ content: '❌ Nie udało się wygenerować galerii.' });
+    }
   }
 
   // ───────────── Szablony sprzedawcy ─────────────
@@ -794,11 +854,11 @@ function createWizard({
 
   async function handleTemplateSave(s, interaction) {
     const reply = (payload) => (interaction.isFromMessage() ? interaction.update(payload) : interaction.reply({ ...payload, flags: MessageFlags.Ephemeral }));
-    if (!s.seller || !templates) return reply(render(s));
+    if (!s.seller || !templates) return reply(await view(s));
     const id = slugify(modalText(interaction, 'id'));
     if (!ID_RE.test(id)) {
       s.flash = '⚠️ ID szablonu: 2–32 znaki – małe litery, cyfry i myślniki (np. minecraft-premium).';
-      return reply(render(s));
+      return reply(await view(s));
     }
     const bp = computeBlueprint(s);
     const answers = JSON.parse(JSON.stringify(s.answers));
@@ -813,7 +873,7 @@ function createWizard({
     });
     log.info(`📦 Szablon „${saved.name}” (${saved.id}) ${saved.updated ? 'zaktualizowany' : 'zapisany'} przez ${interaction.user.tag}.`);
     s.flash = `📦 Szablon **${saved.name}** ${saved.updated ? 'zaktualizowany' : 'zapisany'}. Kod dla klienta wygenerujesz w konsoli: \`kod szablon=${saved.id}\``;
-    return reply(render(s));
+    return reply(await view(s));
   }
 
   async function exportBlueprint(s, interaction) {
@@ -831,7 +891,7 @@ function createWizard({
     const busy = store.lockedBy(s.guildId);
     if (busy) {
       s.flash = `⏳ Na serwerze trwa teraz: ${busy}. Poczekaj, aż się zakończy.`;
-      return interaction.update(render(s));
+      return interaction.update(await view(s));
     }
     if (gated() && !s.seller) {
       const grant = grantOf(s.guildId);
@@ -839,7 +899,7 @@ function createWizard({
         s.flash = grant?.error
           ? `🔑 ${grant.error}`
           : '🔑 Kod dostępu tego serwera jest już nieaktywny (wykorzystany lub anulowany). Kliknij **Zapisz projekt**, a potem użyj `/stworz` z nowym kodem i dołącz plik projektu – nic nie stracisz.';
-        return interaction.update(render(s));
+        return interaction.update(await view(s));
       }
       s.env.code = { masked: maskCode(grant.code), remaining: grant.remaining, uses: grant.uses };
     }
@@ -849,13 +909,13 @@ function createWizard({
     const bp = computeBlueprint(s);
     if (bp.errors.length) {
       s.flash = '❌ Najpierw popraw problemy wymienione w podsumowaniu.';
-      return interaction.update(render(s));
+      return interaction.update(await view(s));
     }
     if (s.answers.mode.type === 'wipe') {
       if (interaction.guild.ownerId !== interaction.user.id) {
         s.flash = '🔒 Tryb czyszczenia jest dostępny tylko dla właściciela serwera.';
         s.answers.mode.type = 'append';
-        return interaction.update(render(s));
+        return interaction.update(await view(s));
       }
       return interaction.showModal(modal(cid(s, 'm', 'wipe'), 'Potwierdź wyczyszczenie serwera', [{
         id: 'confirm',
@@ -874,8 +934,8 @@ function createWizard({
     const typed = modalText(interaction, 'confirm').toLocaleLowerCase('pl');
     if (typed !== interaction.guild.name.trim().toLocaleLowerCase('pl')) {
       s.flash = '❌ Nazwa serwera się nie zgadza – czyszczenie anulowane. Nic nie zostało usunięte.';
-      if (interaction.isFromMessage()) return interaction.update(render(s));
-      return interaction.reply({ ...render(s), flags: MessageFlags.Ephemeral });
+      if (interaction.isFromMessage()) return interaction.update(await view(s));
+      return interaction.reply({ ...(await view(s)), flags: MessageFlags.Ephemeral });
     }
     return launch(s, interaction);
   }
@@ -893,7 +953,7 @@ function createWizard({
       }
       if (!res.ok) {
         s.flash = `🔑 ${res.error}`;
-        return interaction.update(render(s));
+        return interaction.update(await view(s));
       }
       ticket = res;
       log.info(`🔑 Kod ${maskCode(res.code)}: start budowy na ${interaction.guild.name} (${s.guildId}) – pozostało ${res.remaining}/${res.uses}`);
@@ -950,7 +1010,7 @@ function createWizard({
     return result;
   }
 
-  return { start, handle, handleCode, render };
+  return { start, handle, handleCode, render, view };
 }
 
 module.exports = { createWizard };
