@@ -611,7 +611,7 @@ const permissionsStep = {
         field(`⛔ Zablokowane (${off.length})`, off.map(([, t]) => `${t.emoji} ${t.label}`).join('\n') || '*nic*', true),
         field('🔒 Zawsze zablokowane dla członków', '@everyone/@here, zarządzanie wiadomościami, kanałami i rolami, wyciszanie i banowanie innych.'),
         field('✅ Weryfikacja', gate
-          ? 'Włączona – nowe osoby widzą tylko regulamin i kanał weryfikacji. Po kliknięciu przycisku dostają rolę członka z powyższymi uprawnieniami.'
+          ? 'Włączona – nowe osoby widzą tylko regulamin i #weryfikacja. Powyższe uprawnienia daje rola członka, którą nadaje **Twój bot weryfikacyjny** (kreator jej nie nadaje).'
           : 'Wyłączona – powyższe uprawnienia dostaje każdy (@everyone) od razu po wejściu.'),
       ],
       rows: [
@@ -748,32 +748,23 @@ function setAccess(s, field_, value) {
 
 // ───────────────────────────── 11. BEZPIECZEŃSTWO ─────────────────────────────
 
-const VERIFY_OPTIONS = {
-  captcha: { emoji: '🧮', label: 'Pytanie kontrolne (anty-bot)', description: 'Po kliknięciu trzeba rozwiązać proste działanie, np. 4 + 7' },
-  age1: { emoji: '📅', label: 'Konto min. 1 dzień', description: 'Blokuje świeżo założone konta (raidy)' },
-  age7: { emoji: '🗓️', label: 'Konto min. 7 dni', description: 'Mocniejsza ochrona przed multikontami' },
-  age30: { emoji: '🛡️', label: 'Konto min. 30 dni', description: 'Najmocniejsza ochrona – dla dużych serwerów' },
-  log: { emoji: '📝', label: 'Zapisuj weryfikacje w logach', description: 'Każda (także nieudana) próba trafi na kanał logów' },
-};
-
 const securityStep = {
   id: 'security',
   emoji: '🛡️',
   title: 'Bezpieczeństwo i AutoMod',
-  intro: 'Ustaw poziom weryfikacji Discorda, filtr multimediów, reguły AutoMod (automatycznie blokują spam, oszustwa i wulgaryzmy – alerty trafią na kanał logów) oraz zabezpieczenia przycisku weryfikacji: pytanie kontrolne przeciw botom, minimalny wiek konta i zapis prób w logach.',
+  intro: 'Ustaw poziom weryfikacji Discorda, filtr multimediów i reguły AutoMod – to wbudowane zabezpieczenia Discorda, które działają same, bez żadnego bota (blokują spam, oszustwa i wulgaryzmy, alerty trafiają na kanał logów).',
   render(s) {
     const a = s.answers;
     const lvl = VERIFICATION_LEVELS.find((v) => v.value === Number(a.security.verificationLevel));
     const flt = CONTENT_FILTERS.find((v) => v.value === Number(a.security.contentFilter));
     const am = Object.entries(AUTOMOD_OPTIONS).filter(([k]) => a.security.automod.includes(k));
     const gate = a.modules.includes('verification');
-    const vo = Object.entries(VERIFY_OPTIONS).filter(([k]) => (a.security.verifyOptions || []).includes(k));
     return {
       fields: [
         field('🔐 Poziom weryfikacji', `${lvl.emoji} **${lvl.label}** – ${lvl.description}`, true),
         field('🖼️ Filtr multimediów', `${flt.emoji} **${flt.label}**`, true),
         field(`🤖 AutoMod (${am.length})`, am.map(([, o]) => `${o.emoji} ${o.label}`).join('\n') || '*wyłączony*', true),
-        field('✅ Przycisk weryfikacji', gate ? (vo.map(([, o]) => `${o.emoji} ${o.label}`).join('\n') || '*zwykły przycisk*') : '*sekcja „Weryfikacja” wyłączona*', true),
+        field('✅ Sekcja „Weryfikacja”', gate ? 'kanał #weryfikacja + rola członka\n*rolę nadaje Twój bot weryfikacyjny*' : '*wyłączona – wszyscy widzą serwer od razu*', true),
         a.content.community !== 'off' ? field('ℹ️ Tryb Społeczności', 'Wymaga poziomu weryfikacji min. „Niski” i filtra „Wszyscy członkowie” – kreator dopilnuje tego automatycznie.') : null,
       ].filter(Boolean),
       rows: [
@@ -791,13 +782,6 @@ const securityStep = {
           max: Object.keys(AUTOMOD_OPTIONS).length,
           options: opts(Object.entries(AUTOMOD_OPTIONS), a.security.automod, (o) => ({ label: o.label, description: o.description, emoji: o.emoji })),
         }),
-        selectRow(cid(s, 's', 'verify'), {
-          placeholder: gate ? '✅ Przycisk weryfikacji – zabezpieczenia…' : '✅ Zabezpieczenia weryfikacji (włącz sekcję „Weryfikacja”)',
-          min: 0,
-          max: Object.keys(VERIFY_OPTIONS).length,
-          disabled: !gate,
-          options: opts(Object.entries(VERIFY_OPTIONS), a.security.verifyOptions || [], (o) => ({ label: o.label, description: o.description, emoji: o.emoji })),
-        }),
       ],
     };
   },
@@ -805,18 +789,6 @@ const securityStep = {
     verification(s, [v]) { s.answers.security.verificationLevel = Number(v); markTouched(s.answers, 'security.verificationLevel'); },
     filter(s, [v]) { s.answers.security.contentFilter = Number(v); markTouched(s.answers, 'security.contentFilter'); },
     automod(s, values) { s.answers.security.automod = values.filter((v) => AUTOMOD_OPTIONS[v]); markTouched(s.answers, 'security.automod'); },
-    verify(s, values) {
-      let chosen = values.filter((v) => VERIFY_OPTIONS[v]);
-      // Minimalny wiek konta – zostaje tylko najdłuższy wybrany próg.
-      const ages = chosen.filter((v) => v.startsWith('age'));
-      if (ages.length > 1) {
-        const keep = ages.sort((x, y) => Number(y.slice(3)) - Number(x.slice(3)))[0];
-        chosen = chosen.filter((v) => !v.startsWith('age') || v === keep);
-        s.flash = `ℹ️ Można wybrać jeden próg wieku konta – zostawiono najwyższy (${keep.slice(3)} dni).`;
-      }
-      s.answers.security.verifyOptions = chosen;
-      markTouched(s.answers, 'security.verifyOptions');
-    },
   },
 };
 
@@ -980,7 +952,7 @@ const contentStep = {
   id: 'content',
   emoji: '📨',
   title: 'Wiadomości',
-  intro: 'Bot może od razu opublikować gotowe treści tekstowe: regulamin, informacje o serwerze, opis ról, FAQ, przewodnik dla ekipy oraz panel weryfikacji z przyciskiem.',
+  intro: 'Bot może od razu opublikować gotowe treści tekstowe: regulamin, informacje o serwerze, opis ról, FAQ i przewodnik dla ekipy. To zwykłe wiadomości (embedy) – bez przycisków, więc działają także po usunięciu bota.',
   render(s) {
     const a = s.answers;
     const chosen = Object.entries(CONTENT_OPTIONS).filter(([k]) => a.content.panels.includes(k));
@@ -990,7 +962,7 @@ const contentStep = {
         field(`📨 Publikowane treści (${chosen.length})`, chosen.map(([, o]) => `${o.emoji} ${o.label}`).join('\n') || '*nic – serwer będzie pusty*'),
         field('🌟 Tryb Społeczności', `${COMMUNITY_OPTIONS[a.content.community].emoji} ${COMMUNITY_OPTIONS[a.content.community].label}`, true),
         field('🎨 Kolor wiadomości', `${color.emoji} ${color.label}`, true),
-        field('ℹ️ Weryfikacja', 'Przycisk „Zweryfikuj się” obsługuje ten bot – musi być online, aby działał. Pozostałe wiadomości to zwykły tekst.'),
+        field('ℹ️ Po budowie', 'Wszystkie wiadomości to sam tekst – bot nie jest potrzebny po zbudowaniu serwera (możesz go usunąć).'),
       ],
       rows: [
         selectRow(cid(s, 's', 'panels'), {
@@ -1229,4 +1201,4 @@ const STEPS = [
 
 const STEP_INDEX = Object.fromEntries(STEPS.map((step, i) => [step.id, i]));
 
-module.exports = { STEPS, STEP_INDEX, COMMUNITY_OPTIONS, ACCESS, VOICE_LAYOUTS, LIST_MAX, VERIFY_OPTIONS, CUSTOM_TARGETS, parseFaq, splitEmoji };
+module.exports = { STEPS, STEP_INDEX, COMMUNITY_OPTIONS, ACCESS, VOICE_LAYOUTS, LIST_MAX, CUSTOM_TARGETS, parseFaq, splitEmoji };

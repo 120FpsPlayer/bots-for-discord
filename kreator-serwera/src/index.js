@@ -11,8 +11,9 @@ const { SessionStore } = require('./wizard/sessions');
 const { createWizard } = require('./wizard/router');
 const { runBuild, handleOriginDelete } = require('./wizard/build');
 const { handleUndo } = require('./wizard/undo');
-const { handleVerification, handleVerificationAnswer } = require('./features/verification');
 const { createCleanupPanel } = require('./cleanup/panel');
+const { CodeStore, CodeStoreError } = require('./access/codes');
+const { startConsole } = require('./access/console');
 
 const log = createLogger('bot');
 
@@ -26,7 +27,8 @@ if (problems.length) {
 // Wystarczy intencja Guilds – bot nie czyta treści wiadomości ani listy członków.
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 const store = new SessionStore({ timeoutMinutes: config.sessionTimeoutMinutes });
-const wizard = createWizard({ store, config, runBuild });
+const codes = new CodeStore({ file: config.codesFile });
+const wizard = createWizard({ store, config, runBuild, codes });
 const cleanup = createCleanupPanel({ store });
 const COMMANDS = [stworzCommand, usunCommand].map((c) => c.toJSON());
 
@@ -45,6 +47,17 @@ client.once(Events.ClientReady, async (c) => {
     }
   } catch (err) {
     log.error('Nie udało się zarejestrować komend:', err);
+  }
+
+  if (config.requireCode) {
+    try {
+      const active = codes.list().filter((r) => !r.revokedAt && r.remaining > 0).length;
+      log.info(`🔑 Kody dostępu: WŁĄCZONE – aktywnych kodów: ${active}. Wpisz w konsoli „kod”, aby wygenerować nowy (lista komend: „pomoc”).`);
+    } catch (err) {
+      log.error(err instanceof CodeStoreError ? err.message : `Nie mogę odczytać kodów: ${err.message}`);
+    }
+  } else {
+    log.warn('🔑 Kody dostępu: WYŁĄCZONE (REQUIRE_CODE=false) – każdy administrator może użyć /stworz.');
   }
 
   const invite = c.generateInvite({
@@ -77,16 +90,13 @@ client.on(Events.InteractionCreate, async (interaction) => {
         if (interaction.isButton()) await handleOriginDelete(interaction);
         break;
       case 'wzu':
-        if (interaction.isButton()) await handleUndo(interaction, store);
+        if (interaction.isButton()) await handleUndo(interaction, store, codes);
         break;
       case 'cl':
         await cleanup.handle(interaction);
         break;
-      case 'vf':
-        if (interaction.isButton()) await handleVerification(interaction);
-        break;
-      case 'vfq':
-        if (interaction.isModalSubmit()) await handleVerificationAnswer(interaction);
+      case 'wzk':
+        await wizard.handleCode(interaction);
         break;
       default:
         break;
@@ -126,6 +136,9 @@ function shutdown(signal) {
   log.info(`Otrzymano ${signal} – wyłączam bota…`);
   client.destroy().finally(() => process.exit(0));
 }
+// Konsola sprzedawcy (Wispbyte: pole „Type a command…” pod konsolą): kod, kody, info, anuluj, pomoc…
+startConsole({ codes, client, store, onStop: () => shutdown('stop') });
+
 process.on('SIGINT', () => shutdown('SIGINT'));
 process.on('SIGTERM', () => shutdown('SIGTERM'));
 

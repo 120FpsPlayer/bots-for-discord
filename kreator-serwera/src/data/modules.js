@@ -45,10 +45,10 @@ const MODULES = {
   // ───────────── A: informacje i ogłoszenia ─────────────
   verification: {
     group: 'A', emoji: '✅', label: 'Weryfikacja',
-    description: 'Nowi widzą tylko regulamin i przycisk weryfikacji',
+    description: 'Kanał #weryfikacja + rola Członek – pod Twojego bota weryfikacyjnego',
     channels: [ch('verify', '✅', L('weryfikacja', 'verification'),
-      L('Kliknij przycisk poniżej, aby uzyskać dostęp do serwera.', 'Click the button below to get access to the server.'),
-      { cat: 'info', profile: 'verify', post: 'verify' })],
+      L('Zweryfikuj się, aby uzyskać dostęp do serwera.', 'Verify yourself to get access to the server.'),
+      { cat: 'info', profile: 'verify' })],
   },
   rules: {
     group: 'A', emoji: '📜', label: 'Regulamin',

@@ -128,10 +128,12 @@ function profileOverwrites(profile, g, { posters = [], access = [], gate = false
         ? [ow(E, ['ViewChannel', 'ReadMessageHistory'], [...SEND_SET, 'AddReactions']), ...allowFor(writers, POST_SET)]
         : [ow(E, [], SEND_SET), ...allowFor(writers, POST_SET)];
     case 'verify':
+      // Kanał pod zewnętrznego bota weryfikacyjnego: nowi mogą klikać, reagować i używać komend (np. /verify),
+      // ale nie pisać; bot (rola Boty) i administracja mogą publikować panel weryfikacji.
       return [
-        ow(E, ['ViewChannel', 'ReadMessageHistory'], [...SEND_SET, 'AddReactions', 'UseApplicationCommands']),
+        ow(E, ['ViewChannel', 'ReadMessageHistory', 'AddReactions', 'UseApplicationCommands'], SEND_SET),
         ...(g.member.length ? [ow(g.member[0], [], ['ViewChannel'])] : []),
-        ...allowFor(g.admins, POST_SET),
+        ...allowFor([...g.admins, ...g.bots], POST_SET),
       ];
     case 'threadsOnly':
       return [ow(E, ['SendMessagesInThreads'], ['SendMessages', 'CreatePublicThreads', 'CreatePrivateThreads']), ...allowFor(writers, POST_SET)];

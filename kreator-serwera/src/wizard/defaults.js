@@ -56,10 +56,10 @@ const SIZE_MEMBER_PERMS = {
 };
 
 const SIZE_SECURITY = {
-  small: { verificationLevel: 1, contentFilter: 2, automod: ['spam', 'mentions', 'scam'], verifyOptions: ['log'] },
-  medium: { verificationLevel: 2, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs'], verifyOptions: ['log'] },
-  large: { verificationLevel: 2, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs', 'presetSexual', 'presetProfanity', 'profiles'], verifyOptions: ['log', 'captcha', 'age1'] },
-  huge: { verificationLevel: 3, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs', 'presetSexual', 'presetProfanity', 'polishProfanity', 'profiles'], verifyOptions: ['log', 'captcha', 'age7'] },
+  small: { verificationLevel: 1, contentFilter: 2, automod: ['spam', 'mentions', 'scam'] },
+  medium: { verificationLevel: 2, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs'] },
+  large: { verificationLevel: 2, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs', 'presetSexual', 'presetProfanity', 'profiles'] },
+  huge: { verificationLevel: 3, contentFilter: 2, automod: ['spam', 'mentions', 'scam', 'invites', 'presetSlurs', 'presetSexual', 'presetProfanity', 'polishProfanity', 'profiles'] },
 };
 
 const SIZE_CHANNELS = {
@@ -69,7 +69,7 @@ const SIZE_CHANNELS = {
   huge: { slowmode: 5, voiceCount: 6, voiceLayout: 'big', afkTimeout: 900 },
 };
 
-const ALL_PANELS = ['rules', 'info', 'verify', 'rolesInfo', 'welcomeChat', 'staffGuide', 'faq', 'extras'];
+const ALL_PANELS = ['rules', 'info', 'rolesInfo', 'welcomeChat', 'staffGuide', 'faq', 'extras'];
 
 function computeModules(preset, size, age) {
   const set = new Set(preset.modules);
@@ -126,7 +126,6 @@ function computeDependentDefaults(answers) {
     'security.verificationLevel': computeSecurity(preset, size, age).verificationLevel,
     'security.contentFilter': computeSecurity(preset, size, age).contentFilter,
     'security.automod': computeSecurity(preset, size, age).automod,
-    'security.verifyOptions': computeSecurity(preset, size, age).verifyOptions,
     'channels.slowmode': SIZE_CHANNELS[size].slowmode,
     'channels.voiceCount': SIZE_CHANNELS[size].voiceCount,
     'channels.voiceLayout': SIZE_CHANNELS[size].voiceLayout,

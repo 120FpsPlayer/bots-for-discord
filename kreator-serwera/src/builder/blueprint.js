@@ -26,7 +26,7 @@ const TEXT_KINDS = new Set(['text', 'announcement', 'forum']);
 const VOICE_KINDS = new Set(['voice', 'stage']);
 
 const POST_PANEL = {
-  rules: 'rules', info: 'info', verify: 'verify', rolesInfo: 'rolesInfo',
+  rules: 'rules', info: 'info', rolesInfo: 'rolesInfo',
   welcomeChat: 'welcomeChat', staffGuide: 'staffGuide', faq: 'faq',
 };
 
@@ -84,10 +84,6 @@ function buildBlueprint(input, env = {}) {
   if (modules.has('verification') && !roleGroups.has('member')) {
     roleGroups.add('member');
     warnings.push('Weryfikacja wymaga roli członka – została dodana automatycznie.');
-  }
-  if (modules.has('verification') && !panels.has('verify')) {
-    panels.add('verify');
-    warnings.push('Włączono panel weryfikacji – bez niego nikt nie mógłby się zweryfikować.');
   }
   if (specialOpts.has('private')) specialOpts.add('role');
   const gate = modules.has('verification');
@@ -719,8 +715,10 @@ function buildBlueprint(input, env = {}) {
     errors.push(`Za dużo ról: ${stats.roles} nowych + ${existingRoles} istniejących > limit Discorda ${LIMITS.roles}.`);
   }
   if (!stats.channels) errors.push('Serwer nie ma żadnych kanałów – wybierz przynajmniej jeden moduł.');
-  if (gate && !wipe) {
-    warnings.push('Weryfikacja zabiera @everyone dostęp do kanałów – obecni członkowie też muszą kliknąć „Zweryfikuj się”, aby widzieć serwer.');
+  if (gate) {
+    const member = roles.find((r) => r.key === 'member')?.name || 'Członek';
+    warnings.push(`Weryfikacja: nowe osoby widzą tylko regulamin i #weryfikacja, dopóki nie dostaną roli „${member}”. Kreator nie nadaje tej roli – właściciel serwera musi dodać własnego bota weryfikacyjnego, który ją nadaje.`);
+    if (!wipe) warnings.push(`Obecni członkowie (poza Tobą i właścicielem) stracą dostęp do kanałów, dopóki nie dostaną roli „${member}”.`);
   }
   if (g.member.length && !gate) {
     warnings.push('Rola członka bez weryfikacji jest kosmetyczna – nadaj ją ręcznie albo botem „autorole”.');
@@ -742,11 +740,6 @@ function buildBlueprint(input, env = {}) {
       age: String(answers.age),
       mode: wipe ? 'wipe' : 'append',
       gate,
-      verify: gate ? {
-        captcha: (answers.security.verifyOptions || []).includes('captcha'),
-        minAgeDays: Math.max(0, ...(answers.security.verifyOptions || []).map((o) => ({ age1: 1, age7: 7, age30: 30 }[o] || 0))),
-        logChannel: (answers.security.verifyOptions || []).includes('log') ? ['logMembers', 'logMod', 'logServer', 'staffReports', 'staffChat'].find(hasChannel) || null : null,
-      } : null,
       embedColor,
     },
     guild,

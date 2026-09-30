@@ -109,7 +109,8 @@ function assertValidBlueprint(bp, label) {
   }
   if (bp.meta.gate) {
     assert.equal(bp.everyone.length, 0, ctx('przy weryfikacji @everyone nie ma uprawnień'));
-    assert.ok(bp.messages.some((m) => m.kind === 'verify'), ctx('brak panelu weryfikacji'));
+    assert.ok(!bp.messages.some((m) => m.kind === 'verify'), ctx('bot nie publikuje panelu weryfikacji (robi to bot kupującego)'));
+    assert.ok(bp.warnings.some((w) => w.includes('bota weryfikacyjnego')), ctx('brak ostrzeżenia o bocie weryfikacyjnym'));
   }
   JSON.stringify(bp); // blueprint musi dać się wyeksportować
 }
@@ -207,7 +208,10 @@ test('weryfikacja: @everyone bez uprawnień, rola członka z uprawnieniami, kana
   const everyone = verify.overwrites.find((o) => o.target === '@everyone');
   assert.ok(everyone.allow.includes('ViewChannel'));
   assert.ok(everyone.deny.includes('SendMessages'));
+  assert.ok(everyone.allow.includes('UseApplicationCommands') && everyone.allow.includes('AddReactions'), 'zewnętrzny bot weryfikacyjny może używać komend i reakcji');
   assert.ok(verify.overwrites.find((o) => o.target === 'member').deny.includes('ViewChannel'));
+  assert.ok(verify.overwrites.some((o) => o.target === 'bots' && o.allow.includes('SendMessages')), 'rola Boty może opublikować panel weryfikacji');
+  assert.equal(verify.post, undefined, 'kreator nie publikuje nic w #weryfikacja');
   const rules = bp.categories.flatMap((c) => c.channels).find((c) => c.key === 'rules');
   assert.ok(rules.overwrites.find((o) => o.target === '@everyone').allow.includes('ViewChannel'));
 });

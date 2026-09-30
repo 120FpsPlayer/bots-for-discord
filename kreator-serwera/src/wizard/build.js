@@ -7,6 +7,7 @@ const {
   COLORS, embed, field, button, linkButton, row, progressBar, clip, formatDuration, ButtonStyle, cid,
 } = require('./ui');
 const { createLogger } = require('../utils/logger');
+const { maskCode } = require('../access/codes');
 
 const log = createLogger('budowa');
 const EDIT_INTERVAL_MS = 1500;
@@ -80,7 +81,7 @@ async function runBuild({ session, blueprint, interaction }) {
   });
   log.info(`Koniec budowy na ${guild.name}: ${JSON.stringify(result.created)} w ${Math.round(result.duration / 1000)} s, błędy: ${result.errors.length}, uwagi: ${result.warnings.length}.`);
   const createdAnything = result.ids && Object.values(result.ids).some((list) => list.length);
-  if (createdAnything) undo.remember(guild.id, result, { userId: interaction.user.id, wipe: blueprint.meta.mode === 'wipe' });
+  if (createdAnything) undo.remember(guild.id, result, { userId: interaction.user.id, wipe: blueprint.meta.mode === 'wipe', ticket: session.ticket || null });
 
   await editing;
   const frame = doneFrame({ session, blueprint, result, guild, originChannelId: interaction.channelId });
@@ -121,7 +122,7 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
   fields.push(field('🔑 Uprawnienia kanałów', [
     `⚙️ Ustawiono **${c.overwrites}** nadpisań uprawnień`,
     `💬 ${st.open} otwartych • 👁️ ${st.readonly} tylko do odczytu • 🔒 ${st.hidden} ukrytych`,
-    backup ? '♻️ Uprawnienia odtworzone 1:1 z kopii' : blueprint.meta.gate ? '✅ Nowe osoby widzą tylko regulamin i weryfikację' : '👥 Nowe osoby od razu widzą kanały dla członków',
+    backup ? '♻️ Uprawnienia odtworzone 1:1 z kopii' : blueprint.meta.gate ? '✅ Nowe osoby widzą tylko regulamin i #weryfikacja (rolę nadaje Twój bot)' : '👥 Nowe osoby od razu widzą kanały dla członków',
   ].join('\n')));
   if (result.fatal) fields.push(field('💥 Błąd krytyczny', result.fatal));
   if (problems.length) {
@@ -139,9 +140,10 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
     '1. **Przeciągnij rolę bota na samą górę** listy ról (Ustawienia → Role).',
     '2. Nadaj role ekipie i sprawdź regulamin – dopasuj go do siebie.',
     '3. Dodaj boty (moderacja/logi, poziomy, muzyka) i nadaj im rolę **Boty**.',
-    '4. Zostaw tego bota online – obsługuje przycisk weryfikacji.',
+    blueprint.meta.gate ? '4. **Dodaj bota weryfikacyjnego**, który nadaje rolę członka – do tego czasu nowe osoby widzą tylko regulamin i #weryfikacja.' : null,
+    '✅ Ten bot nie jest już potrzebny – serwer działa bez niego (zostaw go tylko, jeśli chcesz używać /usun).',
     '↩️ Nie podoba Ci się wynik? **Cofnij budowę** usunie wszystko, co utworzyłem (przez 2 godziny).',
-  ].join('\n')));
+  ].filter(Boolean).join('\n')));
 
   const link = (key) => (result.channels[key] ? `https://discord.com/channels/${guild.id}/${result.channels[key]}` : null);
   const buttons = [];
@@ -165,7 +167,13 @@ function doneFrame({ session, blueprint, result, guild, originChannelId }) {
         : `Serwer **${guild.name}** został zbudowany zgodnie z Twoim projektem. Raport trafił też na kanał ekipy.`;
 
   return {
-    embeds: [embed({ title, description, color, fields, footer: `Kreator Serwera • sesja ${session.id}` })],
+    embeds: [embed({
+      title,
+      description,
+      color,
+      fields,
+      footer: `Kreator Serwera • sesja ${session.id}${session.ticket ? ` • kod ${maskCode(session.ticket.code)}: pozostało budów ${session.ticket.remaining}/${session.ticket.uses}` : ''}`,
+    })],
     components: buttons.length ? [row(...buttons)] : [],
   };
 }

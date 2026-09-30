@@ -1,12 +1,9 @@
 'use strict';
 
-const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
-} = require('discord.js');
+const { EmbedBuilder } = require('discord.js');
 const { L, tr, fill } = require('../utils/i18n');
 const { SERVER_TYPES } = require('../data/serverTypes');
 const { STAFF_LEVELS } = require('../data/roles');
-const { verifyButtonId } = require('../features/verification');
 
 /**
  * Generuje wiadomości publikowane przez bota na zbudowanym serwerze.
@@ -357,43 +354,6 @@ function faq(ctx) {
   });
 }
 
-// ───────────────────────────── WERYFIKACJA ─────────────────────────────
-
-function verify(ctx) {
-  const roleId = ctx.roleId('member');
-  if (!roleId) return null;
-  const v = ctx.blueprint.meta.verify || {};
-  const steps = [
-    T(ctx, `Przeczytaj ${ctx.ch('rules') || 'regulamin'}`, `Read ${ctx.ch('rules') || 'the rules'}`),
-    T(ctx, 'Kliknij przycisk **Zweryfikuj się** poniżej', 'Click **Verify** below'),
-  ];
-  if (v.captcha) steps.push(T(ctx, 'Odpowiedz na krótkie pytanie kontrolne (ochrona przed botami)', 'Answer a short check question (bot protection)'));
-  const embed = baseEmbed(ctx)
-    .setTitle(T(ctx, '✅ Weryfikacja', '✅ Verification'))
-    .setDescription(T(ctx,
-      `Witaj na serwerze **${ctx.guildName}**! 👋\n\nAby uzyskać dostęp do wszystkich kanałów:\n${steps.map((st, i) => `**${i + 1}.** ${st}`).join('\n')}\n\nKlikając przycisk, potwierdzasz, że akceptujesz regulamin serwera.`,
-      `Welcome to **${ctx.guildName}**! 👋\n\nTo access all channels:\n${steps.map((st, i) => `**${i + 1}.** ${st}`).join('\n')}\n\nBy clicking you confirm that you accept the server rules.`))
-    .setFooter({ text: T(ctx, 'Masz problem z weryfikacją? Napisz do administracji.', 'Trouble verifying? Contact the staff.') });
-  if (v.minAgeDays) {
-    embed.addFields({
-      name: T(ctx, '🛡️ Wymagania', '🛡️ Requirements'),
-      value: T(ctx, `Twoje konto Discord musi mieć co najmniej **${v.minAgeDays} ${v.minAgeDays === 1 ? 'dzień' : 'dni'}**.`, `Your Discord account must be at least **${v.minAgeDays} day${v.minAgeDays === 1 ? '' : 's'}** old.`),
-    });
-  }
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(verifyButtonId(ctx.lang, roleId, {
-        captcha: Boolean(v.captcha),
-        minAgeDays: v.minAgeDays || 0,
-        logChannelId: v.logChannel ? ctx.channelId(v.logChannel) : null,
-      }))
-      .setLabel(T(ctx, 'Zweryfikuj się', 'Verify'))
-      .setEmoji('✅')
-      .setStyle(ButtonStyle.Success),
-  );
-  return { embeds: [embed], components: [row] };
-}
-
 // ───────────────────────────── OPIS RÓL ─────────────────────────────
 
 /** Nagłówki grup ról w opisie (klucz = sekcja roli albo grupa „o mnie”). */
@@ -617,7 +577,7 @@ function card(ctx, key) {
 }
 
 const RENDERERS = {
-  rules, info, faq, verify, rolesInfo, welcomeChat, staffGuide, boosts, partnerships, suggestions, qotd, counting, announcement,
+  rules, info, faq, rolesInfo, welcomeChat, staffGuide, boosts, partnerships, suggestions, qotd, counting, announcement,
 };
 
 /** Zwraca listę wiadomości do wysłania dla danego rodzaju treści. */
@@ -634,7 +594,6 @@ function renderContent(kind, ctx) {
 const CONTENT_OPTIONS = {
   rules: { emoji: '📜', label: 'Regulamin', description: 'Pełny regulamin w #regulamin' },
   info: { emoji: 'ℹ️', label: 'Informacje o serwerze', description: 'Opis, przewodnik po kanałach, ekipa' },
-  verify: { emoji: '✅', label: 'Panel weryfikacji', description: 'Przycisk „Zweryfikuj się”' },
   rolesInfo: { emoji: '🎭', label: 'Opis ról', description: 'Lista ról serwera i jak je zdobyć (tekst)' },
   welcomeChat: { emoji: '🎉', label: 'Powitanie na czacie', description: 'Wiadomość startowa na #ogólny' },
   staffGuide: { emoji: '🛡️', label: 'Przewodnik ekipy', description: 'Role, zasady i checklista dla ekipy' },

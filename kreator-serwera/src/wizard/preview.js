@@ -95,13 +95,13 @@ function summaryFields(session, bp) {
       `💬 **${st.text}** tekstowych${st.forums ? ` (w tym ${st.forums} forów)` : ''}`,
       `🔊 **${st.voice}** głosowych`,
       `🎭 **${st.roles}** ról${st.separators ? ` (w tym ${st.separators} separatorów)` : ''}`,
-      `📨 **${st.messages}** wiadomości (tekst + przycisk weryfikacji)`,
+      `📨 **${st.messages}** wiadomości (sam tekst)`,
       `🤖 **${st.automod}** reguł AutoMod`,
     ].join('\n'), true),
     field('🛡️ Bezpieczeństwo', [
       `Weryfikacja Discorda: ${lvl?.emoji} ${lvl?.label}`,
       `Filtr multimediów: ${flt?.emoji} ${flt?.label}`,
-      `Weryfikacja przyciskiem: ${bp.meta.gate ? `✅${bp.meta.verify?.captcha ? ' + pytanie' : ''}${bp.meta.verify?.minAgeDays ? ` + konto ${bp.meta.verify.minAgeDays} d.` : ''}${bp.meta.verify?.logChannel ? ' + logi' : ''}` : '❌'}`,
+      `Sekcja weryfikacji: ${bp.meta.gate ? '✅ (rolę nadaje Twój bot)' : '❌'}`,
       `Społeczność: ${COMMUNITY_OPTIONS[a.content.community].emoji} ${COMMUNITY_OPTIONS[a.content.community].label}`,
     ].join('\n'), true),
     field('⚙️ Budowa', [

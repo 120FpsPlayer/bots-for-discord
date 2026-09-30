@@ -24,7 +24,7 @@ function validateModal(modal) {
   return json;
 }
 
-function createInteraction({ guild, userId = '1', customId, values, fields = {}, kind = 'component', permissions = PermissionsBitField.All, channelId = 'origin', commandName = 'stworz', attachment = null }) {
+function createInteraction({ guild, userId = '1', customId, values, fields = {}, kind = 'component', permissions = PermissionsBitField.All, channelId = 'origin', commandName = 'stworz', attachment = null, stringOptions = {} }) {
   const state = { replies: [], updates: [], modals: [], edits: [], dms: [] };
   const record = (bucket) => async (payload) => {
     if (payload.embeds || payload.components) validateMessage(payload);
@@ -36,7 +36,7 @@ function createInteraction({ guild, userId = '1', customId, values, fields = {},
     customId,
     values,
     commandName: kind === 'command' ? commandName : undefined,
-    options: { getAttachment: () => attachment },
+    options: { getAttachment: () => attachment, getString: (name) => stringOptions[name] ?? null },
     guild,
     guildId: guild.id,
     channelId,

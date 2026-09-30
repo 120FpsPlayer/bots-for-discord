@@ -101,7 +101,6 @@ function sanitizeAnswers(raw) {
     verificationLevel: int(sec.verificationLevel, 0, 4, defaults['security.verificationLevel']),
     contentFilter: int(sec.contentFilter, 0, 2, defaults['security.contentFilter']),
     automod: subset(sec.automod, AUTOMOD_OPTIONS) ?? defaults['security.automod'],
-    verifyOptions: Array.isArray(sec.verifyOptions) ? sec.verifyOptions.filter((o) => ['captcha', 'age1', 'age7', 'age30', 'log'].includes(o)) : defaults['security.verifyOptions'],
   };
 
   const c = src.channels || {};

@@ -16,8 +16,9 @@ const log = createLogger('cofanie');
 const TTL_MS = 2 * 60 * 60 * 1000;
 const records = new Map();
 
-function remember(guildId, result, { userId, wipe }) {
-  records.set(guildId, { ids: result.ids, previous: result.previous, userId, wipe, at: Date.now() });
+/** ticket – zużyte użycie kodu dostępu; cofnięcie budowy je oddaje. */
+function remember(guildId, result, { userId, wipe, ticket = null }) {
+  records.set(guildId, { ids: result.ids, previous: result.previous, userId, wipe, ticket, at: Date.now() });
 }
 
 function get(guildId) {
@@ -122,7 +123,7 @@ async function performUndo(guild, record) {
 }
 
 /** Obsługa przycisków wzu:ask / wzu:yes / wzu:no (bez sesji – sprawdzamy uprawnienia). */
-async function handleUndo(interaction, store) {
+async function handleUndo(interaction, store, codes = null) {
   const [, action, guildId] = interaction.customId.split(':');
   if (guildId !== interaction.guildId || !interaction.memberPermissions?.has(PermissionFlagsBits.Administrator)) {
     return interaction.reply({ content: '🔒 Brak uprawnień.', flags: MessageFlags.Ephemeral });
@@ -175,6 +176,15 @@ async function handleUndo(interaction, store) {
     } finally {
       store?.unlock(guildId);
     }
+    let refunded = false;
+    if (record.ticket && codes) {
+      try {
+        refunded = codes.refund(record.ticket);
+        if (refunded) log.info(`🔑 Cofnięto budowę na ${interaction.guild.name} – użycie kodu wróciło do serwera.`);
+      } catch (err) {
+        log.error(err.message);
+      }
+    }
     log.info(`Cofnięto budowę na ${interaction.guild.name}: ${JSON.stringify(result.deleted)}`);
     const frame = {
       embeds: [embed({
@@ -186,7 +196,9 @@ async function handleUndo(interaction, store) {
           field('⏱️ Czas', formatDuration((Date.now() - started) / 1000), true),
           ...(result.problems.length ? [field(`📝 Uwagi (${result.problems.length})`, result.problems.slice(0, 10).map((p) => `⚠️ ${p}`).join('\n'))] : []),
         ],
-        description: 'Możesz uruchomić **/stworz** jeszcze raz i zbudować serwer od nowa.',
+        description: refunded
+          ? 'Możesz uruchomić **/stworz** jeszcze raz i zbudować serwer od nowa – 🔑 **użycie kodu dostępu wróciło** do tego serwera.'
+          : 'Możesz uruchomić **/stworz** jeszcze raz i zbudować serwer od nowa.',
       })],
       components: [],
     };

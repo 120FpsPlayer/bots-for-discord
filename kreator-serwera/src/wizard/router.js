@@ -9,6 +9,7 @@ const {
 } = require('./ui');
 const { loadProjectAttachment } = require('./project');
 const { computeStats } = require('../cleanup/snapshot');
+const { AttemptLimiter, maskCode, CODE_LENGTH } = require('../access/codes');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('kreator');
@@ -26,7 +27,7 @@ function sequence(s) {
  * Router kreatora: renderuje panel (intro → kroki → podsumowanie → podgląd → budowa)
  * i obsługuje wszystkie interakcje z customId zaczynającym się od „wz:”.
  */
-function createWizard({ store, config, runBuild }) {
+function createWizard({ store, config, runBuild, codes = null }) {
   const footer = `Panel widzisz tylko Ty • sesja wygasa po ${config.sessionTimeoutMinutes} min bezczynności`;
 
   // ───────────── Ekrany ─────────────
@@ -38,7 +39,8 @@ function createWizard({ store, config, runBuild }) {
       `${env.botTop ? '✅' : '⚠️'} Rola bota ${env.botTop ? 'jest najwyżej na liście ról' : 'nie jest najwyżej – role nad nią nie zostaną zmienione ani usunięte'}`,
       `${env.existingChannels < 400 ? '✅' : '⚠️'} Kanały na serwerze: **${env.existingChannels}**/500`,
       `${env.existingRoles < 200 ? '✅' : '⚠️'} Role na serwerze: **${env.existingRoles}**/250`,
-    ];
+      env.code ? `🔑 Kod dostępu \`${env.code.masked}\` – pozostało budów: **${env.code.remaining}**/${env.code.uses}` : null,
+    ].filter(Boolean);
     return {
       embeds: [embed({
         title: '👋 Witaj w Kreatorze Serwera!',
@@ -102,6 +104,13 @@ function createWizard({ store, config, runBuild }) {
     };
   }
 
+  /** Informacja, ile użyć kodu zostanie po budowie. */
+  function codeLine(s) {
+    const c = s.env?.code;
+    if (!c) return null;
+    return `🔑 Budowa zużyje 1 użycie kodu \`${c.masked}\` (zostanie ${Math.max(0, c.remaining - 1)}/${c.uses}). Budowa, która nic nie utworzy albo zostanie cofnięta, odda użycie.`;
+  }
+
   function computeBlueprint(s) {
     if (s.restore) return (s.blueprint = restoreBlueprint(s));
     s.blueprint = buildBlueprint(s.answers, { existingChannels: s.env.existingChannels, existingRoles: s.env.existingRoles });
@@ -152,6 +161,7 @@ function createWizard({ store, config, runBuild }) {
       `Wczytano **kopię zapasową** serwera **${clip(r.guildName || bp.guild.name || 'bez nazwy', 80)}** z ${created}.`,
       'Odtworzę role (z uprawnieniami, kolorami i kolejnością), kategorie i kanały (z uprawnieniami, tematami i ustawieniami) oraz wybrane poniżej elementy.',
       bp.errors.length ? `\n${bp.errors.map((e) => `❌ ${e}`).join('\n')}` : null,
+      codeLine(s),
     ].filter(Boolean).join('\n');
     s.flash = null;
     return {
@@ -221,6 +231,7 @@ function createWizard({ store, config, runBuild }) {
       bp.errors.length
         ? '❌ **Popraw zaznaczone problemy, aby móc zbudować serwer.**'
         : '✅ **Wszystko gotowe!** Sprawdź podsumowanie, obejrzyj podgląd kanałów i ról, a potem kliknij **Zbuduj serwer**.',
+      codeLine(s),
       `\n${progressBar(STEPS.length + 1, STEPS.length + 1)}`,
     ].filter(Boolean).join('\n');
     s.flash = null;
@@ -289,43 +300,179 @@ function createWizard({ store, config, runBuild }) {
     return { embeds: [embed({ title, description, color })], components: [] };
   }
 
+  // ───────────── Kod dostępu ─────────────
+
+  const gated = () => Boolean(config.requireCode && codes);
+  const limiter = new AttemptLimiter();
+  /** Plik projektu z /stworz czekający, aż ktoś wpisze kod: `${guildId}:${userId}` → { attachment, at }. */
+  const pendingFiles = new Map();
+  const PENDING_TTL_MS = 15 * 60_000;
+  const CODE_DB_ERROR = 'Baza kodów jest chwilowo niedostępna – skontaktuj się ze sprzedawcą.';
+
+  /** Aktywny kod serwera ({ code, remaining, uses }), null gdy brak, albo { error } przy problemie z plikiem kodów. */
+  function grantOf(guildId) {
+    try {
+      return codes.grantFor(guildId);
+    } catch (err) {
+      log.error(err.message);
+      return { error: CODE_DB_ERROR };
+    }
+  }
+
+  function codeFrame({ error, left, blockedMinutes } = {}) {
+    const lines = [
+      'Kreator Serwera działa na **kod dostępu** – dostajesz go od sprzedawcy razem z zakupem serwera.',
+      '',
+      '1️⃣ Kliknij **Wpisz kod** poniżej',
+      `2️⃣ Wklej kod (${CODE_LENGTH} znaków, np. \`ABCDE-FGHJK-LMNPQ-RSTUV\`)`,
+      '3️⃣ Gotowe – otworzy się kreator serwera',
+      '',
+      '🔒 Kod przypisze się do tego serwera. Jedno użycie kodu = jedna budowa serwera – budowa, która nic nie utworzy albo zostanie cofnięta, oddaje użycie.',
+    ];
+    if (error) lines.unshift(`> ❌ ${error}${left !== undefined && left <= 3 ? ` Pozostałe próby: **${left}**.` : ''}\n`);
+    if (blockedMinutes) lines.unshift(`> ⏳ Za dużo błędnych prób – spróbuj ponownie za **${blockedMinutes} min**.\n`);
+    return {
+      embeds: [embed({
+        title: '🔑 Wymagany kod dostępu',
+        description: lines.join('\n'),
+        color: error || blockedMinutes ? COLORS.danger : COLORS.primary,
+        footer: 'Nie masz kodu? Skontaktuj się ze sprzedawcą serwera.',
+      })],
+      components: [row(
+        button('wzk:enter', 'Wpisz kod', { style: ButtonStyle.Primary, emoji: '🔑', disabled: Boolean(blockedMinutes) }),
+        button('wzk:cancel', 'Anuluj', { emoji: '✖️' }),
+      )],
+    };
+  }
+
+  /** Sprawdza kod wpisany przez kupującego (z limitem błędnych prób). */
+  function tryRedeem(interaction, typed) {
+    const { guild, user } = interaction;
+    const blockedMinutes = limiter.blockedFor(user.id);
+    if (blockedMinutes) return { ok: false, frame: codeFrame({ blockedMinutes }) };
+    let res;
+    try {
+      res = codes.redeem(typed, { guildId: guild.id, guildName: guild.name, userId: user.id });
+    } catch (err) {
+      log.error(err.message);
+      return { ok: false, frame: codeFrame({ error: CODE_DB_ERROR }) };
+    }
+    if (!res.ok) {
+      // Zły format niczego nie zdradza – nie liczymy go jako próby zgadnięcia.
+      const left = res.reason === 'format' ? undefined : limiter.fail(user.id);
+      log.warn(`🔑 Nieudana próba kodu na ${guild.name} (${guild.id}) – ${user.tag}: ${res.reason}`);
+      return { ok: false, frame: left === 0 ? codeFrame({ blockedMinutes: limiter.blockedFor(user.id) }) : codeFrame({ error: res.error, left }) };
+    }
+    limiter.reset(user.id);
+    log.info(`🔑 Kod ${maskCode(res.code)} przypisany do ${guild.name} (${guild.id}) przez ${user.tag} – pozostało budów: ${res.remaining}/${res.uses}`);
+    return { ok: true, res };
+  }
+
+  function takePending(key) {
+    const pending = pendingFiles.get(key);
+    pendingFiles.delete(key);
+    for (const [k, v] of pendingFiles) if (Date.now() - v.at > PENDING_TTL_MS) pendingFiles.delete(k);
+    return pending && Date.now() - pending.at <= PENDING_TTL_MS ? pending.attachment : null;
+  }
+
+  /** Obsługa przycisków i formularza kodu: wzk:enter / wzk:cancel / wzk:submit. */
+  async function handleCode(interaction) {
+    const action = interaction.customId.split(':')[1];
+    const key = `${interaction.guildId}:${interaction.user.id}`;
+    if (action === 'cancel') {
+      pendingFiles.delete(key);
+      return interaction.update(endedFrame('✖️ Anulowano', 'Użyj **/stworz**, kiedy będziesz mieć kod dostępu.'));
+    }
+    const problem = accessProblem(interaction);
+    if (problem) return interaction.reply({ ...problem, flags: MessageFlags.Ephemeral });
+    if (!gated()) return open(interaction, { attachment: takePending(key), respond: interaction.isModalSubmit?.() && !interaction.isFromMessage() ? 'reply' : 'update' });
+
+    if (action === 'enter') {
+      const blockedMinutes = limiter.blockedFor(interaction.user.id);
+      if (blockedMinutes) return interaction.update(codeFrame({ blockedMinutes }));
+      return interaction.showModal(modal('wzk:submit', 'Kod dostępu', [{
+        id: 'code',
+        label: 'Kod dostępu',
+        description: `${CODE_LENGTH} znaków – myślniki, spacje i wielkość liter nie mają znaczenia`,
+        style: 'short',
+        required: true,
+        min: CODE_LENGTH,
+        max: 40,
+        placeholder: 'ABCDE-FGHJK-LMNPQ-RSTUV',
+      }]));
+    }
+    if (action === 'submit') {
+      const respond = interaction.isFromMessage() ? 'update' : 'reply';
+      const grant = grantOf(interaction.guildId);
+      if (grant?.error) return interaction[respond]({ ...codeFrame({ error: grant.error }), ...(respond === 'reply' ? { flags: MessageFlags.Ephemeral } : {}) });
+      // Kod mógł już zostać przypisany do serwera (np. przez innego administratora) – wtedy nie pytamy drugi raz.
+      if (!grant) {
+        const r = tryRedeem(interaction, modalText(interaction, 'code'));
+        if (!r.ok) return interaction[respond]({ ...r.frame, ...(respond === 'reply' ? { flags: MessageFlags.Ephemeral } : {}) });
+      }
+      return open(interaction, { attachment: takePending(key), respond });
+    }
+    return undefined;
+  }
+
   // ───────────── Start (/stworz) ─────────────
 
-  async function start(interaction) {
+  /** Czy ta osoba może teraz otworzyć kreator? Zwraca ramkę z powodem odmowy albo null. */
+  function accessProblem(interaction) {
     const { guild, member } = interaction;
     const isOwner = guild.ownerId === interaction.user.id;
-    const isAdmin = member.permissions.has(PermissionFlagsBits.Administrator);
+    const isAdmin = member?.permissions?.has(PermissionFlagsBits.Administrator);
     if (config.ownerOnly ? !isOwner : !(isOwner || isAdmin)) {
-      return interaction.reply({
-        embeds: [embed({ title: '🔒 Brak uprawnień', description: config.ownerOnly ? 'Kreatora może używać tylko **właściciel serwera**.' : 'Kreatora mogą używać tylko osoby z uprawnieniem **Administrator**.', color: COLORS.danger })],
-        flags: MessageFlags.Ephemeral,
-      });
+      return { embeds: [embed({ title: '🔒 Brak uprawnień', description: config.ownerOnly ? 'Kreatora może używać tylko **właściciel serwera**.' : 'Kreatora mogą używać tylko osoby z uprawnieniem **Administrator**.', color: COLORS.danger })] };
     }
-
     const existing = store.get(guild.id);
     if (existing?.building) {
-      return interaction.reply({
-        embeds: [embed({ title: '🏗️ Trwa budowanie', description: `Na tym serwerze właśnie trwa budowa uruchomiona przez <@${existing.userId}>. Poczekaj, aż się zakończy.`, color: COLORS.warning })],
-        flags: MessageFlags.Ephemeral,
-      });
+      return { embeds: [embed({ title: '🏗️ Trwa budowanie', description: `Na tym serwerze właśnie trwa budowa uruchomiona przez <@${existing.userId}>. Poczekaj, aż się zakończy.`, color: COLORS.warning })] };
     }
     const busy = store.lockedBy(guild.id);
     if (busy) {
-      return interaction.reply({
-        embeds: [embed({ title: '⏳ Serwer jest zajęty', description: `Na tym serwerze trwa teraz: **${busy}**. Poczekaj, aż się zakończy, i użyj /stworz ponownie.`, color: COLORS.warning })],
-        flags: MessageFlags.Ephemeral,
-      });
+      return { embeds: [embed({ title: '⏳ Serwer jest zajęty', description: `Na tym serwerze trwa teraz: **${busy}**. Poczekaj, aż się zakończy, i użyj /stworz ponownie.`, color: COLORS.warning })] };
     }
     if (existing && existing.userId !== interaction.user.id && !isOwner) {
       const minutes = Math.max(1, Math.ceil((store.timeoutMs - (Date.now() - existing.updatedAt)) / 60_000));
-      return interaction.reply({
-        embeds: [embed({ title: '⏳ Kreator jest zajęty', description: `Kreator jest otwarty przez <@${existing.userId}>. Sesja wygaśnie po ok. ${minutes} min bezczynności.\n*Właściciel serwera może przejąć kreator, uruchamiając /stworz.*`, color: COLORS.warning })],
-        flags: MessageFlags.Ephemeral,
-      });
+      return { embeds: [embed({ title: '⏳ Kreator jest zajęty', description: `Kreator jest otwarty przez <@${existing.userId}>. Sesja wygaśnie po ok. ${minutes} min bezczynności.\n*Właściciel serwera może przejąć kreator, uruchamiając /stworz.*`, color: COLORS.warning })] };
     }
+    return null;
+  }
 
+  async function start(interaction) {
+    const problem = accessProblem(interaction);
+    if (problem) return interaction.reply({ ...problem, flags: MessageFlags.Ephemeral });
+    const attachment = interaction.options?.getAttachment?.('projekt') || null;
+
+    if (gated()) {
+      const grant = grantOf(interaction.guildId);
+      if (grant?.error) return interaction.reply({ ...codeFrame({ error: grant.error }), flags: MessageFlags.Ephemeral });
+      if (!grant) {
+        const typed = interaction.options?.getString?.('kod');
+        const key = `${interaction.guildId}:${interaction.user.id}`;
+        if (attachment) pendingFiles.set(key, { attachment, at: Date.now() });
+        else pendingFiles.delete(key);
+        if (!typed) return interaction.reply({ ...codeFrame(), flags: MessageFlags.Ephemeral });
+        const r = tryRedeem(interaction, typed);
+        if (!r.ok) return interaction.reply({ ...r.frame, flags: MessageFlags.Ephemeral });
+        pendingFiles.delete(key);
+      }
+    }
+    return open(interaction, { attachment, respond: 'reply' });
+  }
+
+  /**
+   * Otwiera kreator (albo wczytany projekt / kopię zapasową).
+   * respond: 'reply' – nowa wiadomość (komenda), 'update' – podmiana wiadomości z ekranem kodu.
+   */
+  async function open(interaction, { attachment = null, respond = 'reply' } = {}) {
+    const { guild } = interaction;
+    const isOwner = guild.ownerId === interaction.user.id;
+    const send = (payload) => (respond === 'update' ? interaction.update(payload) : interaction.reply({ ...payload, flags: MessageFlags.Ephemeral }));
     const me = guild.members.me ?? await guild.members.fetchMe();
     const highest = guild.roles.cache.reduce((max, r) => (r.position > max ? r.position : max), 0);
+    const grant = gated() ? grantOf(guild.id) : null;
     const env = {
       guildName: guild.name,
       ownerId: guild.ownerId,
@@ -338,17 +485,19 @@ function createWizard({ store, config, runBuild }) {
       verificationLevel: guild.verificationLevel,
       explicitContentFilter: guild.explicitContentFilter,
       defaultNotifications: guild.defaultMessageNotifications,
+      code: grant && !grant.error ? { masked: maskCode(grant.code), remaining: grant.remaining, uses: grant.uses } : null,
     };
     // /stworz projekt:<plik.json> – wczytanie zapisanego projektu i przejście od razu do podsumowania.
-    const attachment = interaction.options?.getAttachment?.('projekt');
     let imported = null;
     if (attachment) {
-      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      if (respond === 'update') await interaction.deferUpdate();
+      else await interaction.deferReply({ flags: MessageFlags.Ephemeral });
       try {
         imported = await loadProjectAttachment(attachment);
       } catch (err) {
         return interaction.editReply({
           embeds: [embed({ title: '📥 Nie udało się wczytać pliku', description: `${err.message}\n\nUżyj pliku z przycisku **Zapisz projekt** w podsumowaniu kreatora albo kopii zapasowej z komendy **/usun**.`, color: COLORS.danger })],
+          components: [],
         });
       }
     }
@@ -380,7 +529,7 @@ function createWizard({ store, config, runBuild }) {
     if (!env.botAdmin) {
       frame.embeds[0].addFields(field('❌ Bot potrzebuje uprawnienia Administrator', 'Bez niego nie mogę tworzyć ról z uprawnieniami ani ustawiać nadpisań kanałów.\n**Jak naprawić:** Ustawienia serwera → Role → rola bota → włącz **Administrator** (albo zaproś bota ponownie linkiem z konsoli, który zawiera `permissions=8`).'));
     }
-    return interaction.reply({ ...frame, flags: MessageFlags.Ephemeral });
+    return send(frame);
   }
 
   // ───────────── Obsługa interakcji ─────────────
@@ -514,6 +663,16 @@ function createWizard({ store, config, runBuild }) {
       s.flash = `⏳ Na serwerze trwa teraz: ${busy}. Poczekaj, aż się zakończy.`;
       return interaction.update(render(s));
     }
+    if (gated()) {
+      const grant = grantOf(s.guildId);
+      if (!grant || grant.error) {
+        s.flash = grant?.error
+          ? `🔑 ${grant.error}`
+          : '🔑 Kod dostępu tego serwera jest już nieaktywny (wykorzystany lub anulowany). Kliknij **Zapisz projekt**, a potem użyj `/stworz` z nowym kodem i dołącz plik projektu – nic nie stracisz.';
+        return interaction.update(render(s));
+      }
+      s.env.code = { masked: maskCode(grant.code), remaining: grant.remaining, uses: grant.uses };
+    }
     const bp = computeBlueprint(s);
     if (bp.errors.length) {
       s.flash = '❌ Najpierw popraw problemy wymienione w podsumowaniu.';
@@ -549,25 +708,55 @@ function createWizard({ store, config, runBuild }) {
   }
 
   async function launch(s, interaction) {
+    // Kod dostępu: jedno użycie schodzi w chwili startu budowy (dwie budowy naraz nie przejdą na jednym kodzie).
+    let ticket = null;
+    if (gated()) {
+      let res;
+      try {
+        res = codes.consume(s.guildId, { guildName: interaction.guild.name, userId: interaction.user.id, kind: s.restore ? 'przywrócenie kopii' : 'budowa' });
+      } catch (err) {
+        log.error(err.message);
+        res = { ok: false, error: CODE_DB_ERROR };
+      }
+      if (!res.ok) {
+        s.flash = `🔑 ${res.error}`;
+        return interaction.update(render(s));
+      }
+      ticket = res;
+      log.info(`🔑 Kod ${maskCode(res.code)}: start budowy na ${interaction.guild.name} (${s.guildId}) – pozostało ${res.remaining}/${res.uses}`);
+    }
+    s.ticket = ticket;
     s.building = true;
     s.abort = false;
     s.view = null;
     const bp = s.blueprint;
-    await interaction.update({
-      embeds: [embed({ title: '🏗️ Przygotowuję budowę…', description: `${progressBar(0, 1)}\n⏱️ Szacowany czas: ~${formatDuration(bp.estimatedSeconds)}`, color: COLORS.build })],
-      components: [],
-    });
+    let result = null;
     try {
-      await runBuild({ session: s, blueprint: bp, interaction });
+      await interaction.update({
+        embeds: [embed({ title: '🏗️ Przygotowuję budowę…', description: `${progressBar(0, 1)}\n⏱️ Szacowany czas: ~${formatDuration(bp.estimatedSeconds)}`, color: COLORS.build })],
+        components: [],
+      });
+      result = await runBuild({ session: s, blueprint: bp, interaction });
     } catch (err) {
       log.error('Budowa zakończona błędem:', err);
     } finally {
       s.building = false;
       store.delete(s.guildId);
+      // Budowa, która nic nie utworzyła (błąd, przerwanie na starcie), oddaje użycie kodu.
+      // Jeśli coś powstało, użycie wraca dopiero po „Cofnij budowę”.
+      const createdAnything = result?.ids && Object.values(result.ids).some((list) => list.length);
+      if (ticket && !createdAnything) {
+        try {
+          if (codes.refund(ticket)) log.info(`🔑 Kod ${maskCode(ticket.code)}: budowa nic nie utworzyła – użycie zwrócone.`);
+        } catch (err) {
+          log.error(err.message);
+        }
+      }
     }
+    return result;
   }
 
-  return { start, handle, render };
+  return { start, handle, handleCode, render };
 }
 
 module.exports = { createWizard };

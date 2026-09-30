@@ -137,21 +137,18 @@ test('uprawnienia kanałów trafiają na serwer jako bity z poprawnymi ID ról',
   assert.ok(guild.me.roles.cache.has(result.roles.bots), 'bot dostał rolę Boty');
 });
 
-test('wiadomości: regulamin, panel weryfikacji z przyciskiem, opis ról (tekst), forum propozycji; bez ticketów i menu ról', async () => {
+test('wiadomości: regulamin, opis ról, forum propozycji – sam tekst, bez żadnych przycisków (bot nie jest potrzebny po budowie)', async () => {
   const { guild, result } = await build('gaming', { tweak: (a) => { a.modules.push('verification', 'suggestions'); } });
   const msg = (key) => guild.channels.cache.get(result.channels[key]).messages;
   assert.ok(msg('rules')[0].embeds[0].toJSON().fields.length >= 5, 'regulamin ma paragrafy');
-  const verifyButton = msg('verify')[0].components[0].toJSON().components[0];
-  assert.ok(verifyButton.custom_id.startsWith(`vf:pl:${result.roles.member}`), verifyButton.custom_id);
-  assert.ok(verifyButton.custom_id.includes(`l${result.channels.logMembers || result.channels.logMod}`), 'log weryfikacji wskazuje kanał logów');
-  assert.ok(verifyButton.custom_id.length <= 100);
+  assert.equal(msg('verify').length, 0, '#weryfikacja zostaje pusty – panel publikuje bot kupującego');
   const roleInfo = msg('roleinfo');
   assert.ok(roleInfo.length >= 1, 'opis ról opublikowany');
   const roleText = roleInfo.flatMap((m) => m.embeds.flatMap((e) => e.toJSON().fields.map((f) => f.value))).join(' ');
   assert.ok(roleText.includes(`<@&${result.roles.owner}>`), 'opis ról wymienia role');
   const allMessages = [...guild.channels.cache.values()].flatMap((c) => c.messages);
-  const customIds = allMessages.flatMap((m) => (m.components || []).flatMap((r) => r.toJSON().components.map((c) => c.custom_id)));
-  assert.deepEqual(customIds.filter((id) => !id.startsWith('vf:')), [], 'jedyny interaktywny element to przycisk weryfikacji');
+  assert.ok(allMessages.length > 5);
+  assert.deepEqual(allMessages.filter((m) => (m.components || []).length), [], 'żadna wiadomość nie ma przycisków ani menu');
   assert.ok(![...guild.channels.cache.values()].some((c) => /ticket/.test(c.name)), 'brak kanałów ticketów');
   const forum = guild.channels.cache.get(result.channels.suggestions);
   assert.equal(forum.type, ChannelType.GuildForum);

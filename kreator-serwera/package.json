@@ -1,7 +1,7 @@
 {
   "name": "kreator-serwera",
-  "version": "1.4.0",
-  "description": "Bot Discord, który komendą /stworz buduje cały serwer (role, uprawnienia, kategorie, kanały, regulamin, AutoMod), a komendą /usun go czyści z kopią zapasową.",
+  "version": "1.5.0",
+  "description": "Bot Discord do tworzenia serwerów na sprzedaż: /stworz (na kod dostępu z konsoli) buduje cały serwer – role, uprawnienia, kanały, regulamin, AutoMod; /usun czyści serwer z kopią zapasową.",
   "main": "index.js",
   "private": true,
   "scripts": {

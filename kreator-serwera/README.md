@@ -9,6 +9,9 @@ bot tworzy wszystko sam i pokazuje postęp na żywo.
 
 Druga komenda, **`/usun`**, czyści serwer (kanały, role, AutoMod i więcej) – z kopią zapasową, którą można przywrócić jednym poleceniem.
 
+Bot jest **wyłącznie od tworzenia serwerów** – po budowie nie jest potrzebny (nie obsługuje weryfikacji, logów ani żadnych przycisków; wszystkie wiadomości to sam tekst).
+Jest przygotowany do **sprzedaży gotowych serwerów**: `/stworz` działa dopiero po wpisaniu **kodu dostępu**, który sprzedawca generuje w konsoli bota (np. na Wispbyte).
+
 ---
 
 ## ✨ Możliwości
@@ -28,7 +31,8 @@ Druga komenda, **`/usun`**, czyści serwer (kanały, role, AutoMod i więcej) �
 | 📨 **Gotowe treści** | profesjonalny regulamin (z paragrafami pod typ serwera), informacje, opis ról, FAQ, przewodnik dla ekipy, karty info (IP serwera, jak kupić, linki…) – wszystko jako tekst w embedach |
 | 📜 **Twój regulamin i teksty** | wybierasz paragrafy regulaminu i system kar (stopniowanie / punkty ostrzeżeń / zero tolerancji), dopisujesz własne zasady i pytania FAQ oraz piszesz pierwsze ogłoszenie (z pingiem @everyone lub roli) |
 | 🔑 **Dostęp do kanałów** | każdy kanał dostaje uprawnienia: kto go widzi i kto może pisać/mówić. Zalecane ustawienia są od razu, a w osobnym kroku zmienisz je dla każdej sekcji (np. „społeczność tylko do odczytu”, „kanały głosowe tylko dla ekipy”) |
-| ✅ **Weryfikacja** | przycisk „Zweryfikuj się” – nowe osoby widzą tylko regulamin, po kliknięciu dostają rolę członka. Opcjonalnie: **pytanie kontrolne** przeciw botom, **minimalny wiek konta** (1/7/30 dni) i **log** każdej próby |
+| ✅ **Weryfikacja (struktura)** | kanał #weryfikacja i rola członka z ustawionymi uprawnieniami – nowe osoby widzą tylko regulamin i #weryfikacja. Rolę nadaje **bot weryfikacyjny, którego ustawia właściciel serwera** (kreator nie publikuje przycisków) |
+| 🔑 **Kody dostępu** | `/stworz` wymaga kodu (20 znaków) wygenerowanego w konsoli; kod przypisuje się do serwera, 1 użycie = 1 budowa, nieudana lub cofnięta budowa oddaje użycie, ochrona przed zgadywaniem |
 | 🌟 **Tryb Społeczności** | włączany automatycznie: kanały ogłoszeń, scena, ekran powitalny, kanał regulaminu i aktualizacji |
 | 🧨 **Tryb czyszczenia** | opcjonalnie usuwa stare kanały, role i AutoMod (tylko właściciel, wymaga wpisania nazwy serwera) |
 | ↩️ **Cofnij budowę** | nie podoba Ci się wynik? Jeden przycisk usuwa wszystko, co utworzył kreator, i przywraca ustawienia serwera (przez 2 godziny po budowie) |
@@ -91,6 +95,37 @@ Link zawiera uprawnienie **Administrator** (`permissions=8`), które jest wymaga
 > 💡 Komendy `/stworz` i `/usun` rejestrują się globalnie przy starcie (zwykle pojawiają się od razu, czasem po kilku minutach).
 > Jeśli chcesz, żeby pojawiła się natychmiast na serwerze testowym, wpisz jego ID w `DEV_GUILD_ID`.
 
+### 🔑 Kody dostępu (sprzedaż serwerów)
+
+`/stworz` działa dopiero po podaniu **kodu dostępu**. Kody generujesz w **konsoli bota** – na Wispbyte wpisujesz komendę
+w polu pod konsolą (tam, gdzie widać logi bota), lokalnie – w oknie, w którym działa bot.
+
+| Komenda konsoli | Co robi |
+|---|---|
+| `kod` | nowy kod na 1 budowę serwera, np. `K7QMZ-3HXPA-RW9TD-2LBNE` |
+| `kod 5` | 5 kodów naraz |
+| `kod 1 3` | 1 kod na 3 budowy |
+| `kod 1 1 Jan Kowalski #12` | kod z notatką (dla kogo / numer zamówienia) |
+| `kody` / `kody wszystkie` | lista aktywnych kodów / wszystkich (z zużytymi i anulowanymi) |
+| `info <kod>` | status, notatka, serwer, na którym użyto kodu, historia budów |
+| `anuluj <kod>` | unieważnia kod (także jeśli już jest przypisany do serwera) |
+| `dodaj <kod> [ile]` | dodaje budowy do kodu (np. klient dokupił kolejną) |
+| `serwery` / `wyjdz <id>` | serwery z botem / bot opuszcza serwer |
+| `status` / `pomoc` / `stop` | stan bota / lista komend / wyłączenie bota |
+
+**Jak to działa dla kupującego:**
+1. Dodaje bota na swój serwer i wpisuje **`/stworz`** – pojawia się ekran „Wymagany kod dostępu”.
+2. Klika **Wpisz kod** i wkleja kod (wielkość liter, spacje i myślniki nie mają znaczenia) – albo od razu `/stworz kod:<kod>`.
+3. Kod przypisuje się do serwera i otwiera się kreator. Kolejne `/stworz` na tym serwerze nie pytają o kod, dopóki kod ma wolne użycia.
+4. **Budowa zużywa 1 użycie** (widać to w podsumowaniu przed budową). Jeśli budowa nic nie utworzy (błąd) albo zostanie cofnięta przyciskiem **Cofnij budowę**, użycie wraca.
+
+**Zabezpieczenia:** kod ma 20 znaków (ok. 10³⁰ kombinacji), po 5 błędnych próbach w 15 minut wpisywanie jest blokowane na 15 minut,
+każda próba jest zapisywana w konsoli. Przywrócenie kopii zapasowej przez `/stworz` też wymaga kodu. **`/usun` działa zawsze, bez kodu.**
+
+Kody są zapisywane w pliku **`data/kody.json`** w folderze bota. ⚠️ **Przy aktualizacji bota nie usuwaj folderu `data/`** –
+są w nim sprzedane kody (plik nie jest częścią ZIP-a, więc wgranie nowej wersji go nie nadpisze).
+Do testów na własnym serwerze możesz wyłączyć kody w `.env`: `REQUIRE_CODE=false`.
+
 ### 4. Przed budową
 - **Przeciągnij rolę bota na samą górę** listy ról (Ustawienia serwera → Role). Bot nie może zmieniać ani usuwać ról, które są nad nim.
 - Najlepiej budować na **nowym, pustym serwerze** – albo najpierw wyczyścić serwer komendą **`/usun`** (lub trybem czyszczenia w kreatorze).
@@ -113,7 +148,7 @@ Wpisz **`/stworz`** na serwerze (komenda jest widoczna tylko dla administratoró
 | 8. 🎭 Role społeczności | grupy ról + własne role specjalne i dla członków |
 | 9. 🔐 Uprawnienia | co mogą członkowie (pliki, linki, wątki, kamera…), domyślne powiadomienia |
 | 10. 🔑 Dostęp do kanałów | dla każdej sekcji: kto widzi (wszyscy / także przed weryfikacją / VIP / ekipa / zarząd) i kto pisze lub mówi (wszyscy / tylko odczyt / tylko wątki) |
-| 11. 🛡️ Bezpieczeństwo | poziom weryfikacji, filtr multimediów, reguły AutoMod, zabezpieczenia przycisku weryfikacji |
+| 11. 🛡️ Bezpieczeństwo | poziom weryfikacji Discorda, filtr multimediów, reguły AutoMod (działają bez bota) |
 | 12. 🔊 Kanały | slowmode, liczba lobby głosowych, kanały z limitem, czas AFK |
 | 13. 📁 Własne kanały | nowe kategorie albo kanały w istniejących sekcjach, z wybranym dostępem |
 | 14. 📨 Wiadomości | co bot ma opublikować, tryb Społeczności, kolor wiadomości |
@@ -185,16 +220,14 @@ a przed startem obejrzysz podgląd kanałów i ról. Przywracanie też można co
 | 💻 Developer / 🎨 Grafik | webhooki i dziennik / emoji i naklejki |
 | ✅ Członek | podstawy + wybrane w kroku 9 przełączniki |
 
-**Weryfikacja:** gdy jest włączona, `@everyone` nie ma żadnych uprawnień – nowe osoby widzą tylko regulamin i kanał weryfikacji.
-Po kliknięciu przycisku dostają rolę członka, a kanał weryfikacji znika.
+**Weryfikacja:** gdy sekcja jest włączona, `@everyone` nie ma żadnych uprawnień – nowe osoby widzą tylko regulamin i #weryfikacja.
+Pełny dostęp daje rola członka, a nadaje ją **bot weryfikacyjny właściciela serwera** (w #weryfikacja może on publikować panel – rola *Boty* ma tam prawo pisania,
+a nowi mogą klikać, reagować i używać komend, np. `/verify`). Kreator sam nie nadaje ról – po budowie nie jest potrzebny.
 
 **Kanały (zalecane ustawienia):** ogłoszenia, regulamin i informacje są tylko do odczytu (piszą administratorzy, wskazane role i boty), kanały ekipy widzi tylko ekipa,
 kanał „zarząd” tylko administracja, logi mogą czytać moderatorzy (pisać – boty z rolą *Boty*), strefę VIP – VIP-y, partnerzy i boosterzy,
 na AFK nie da się mówić. Wszystko to zmienisz w kroku **„Dostęp do kanałów”** – a w podglądzie przed budową każdy kanał ma opisane, kto go widzi i kto pisze.
 Nawet przy własnych ustawieniach kanał weryfikacji, regulamin (przy weryfikacji), kanał zarządu i prywatne kanały ról zachowują swoje uprawnienia.
-
-**Bezpieczeństwo weryfikacji:** przycisk weryfikacji **nigdy** nie nada roli z uprawnieniami moderacyjnymi,
-roli zarządzanej przez integrację ani roli powyżej bota – nawet gdyby ktoś podmienił wiadomość.
 
 ---
 
@@ -208,7 +241,10 @@ roli zarządzanej przez integrację ani roli powyżej bota – nawet gdyby ktoś
 | `/usun` odpowiada „Tylko dla właściciela” | To celowe zabezpieczenie – czyścić serwer może tylko jego właściciel. |
 | Po przywróceniu kopii członkowie nie mają ról | Discord usuwa przypisania razem z rolami, a bot (bez uprawnienia do listy członków) nie może ich zapisać – nadaj role ponownie. |
 | Kanały ogłoszeń / scena są zwykłymi kanałami | Tryb Społeczności był wyłączony lub Discord go odrzucił – włącz go w kroku 14. |
-| Przycisk weryfikacji nie działa | Bot musi być **online** – przycisk obsługuje ten sam bot. |
+| Nowe osoby nic nie widzą | Włączona jest sekcja „Weryfikacja” – dodaj bota weryfikacyjnego, który nadaje rolę członka (albo nadaj ją ręcznie). |
+| `/stworz` prosi o kod | Tak ma być – wygeneruj kod w konsoli bota komendą `kod`. Do testów możesz wyłączyć kody: `REQUIRE_CODE=false`. |
+| Konsola nie reaguje na `kod` | Wpisuj komendy w polu pod konsolą na Wispbyte (bot musi być uruchomiony). Lista komend: `pomoc`. |
+| „Baza kodów jest niedostępna” | Plik `data/kody.json` jest uszkodzony – przywróć go z kopii (bot nie nadpisze uszkodzonego pliku). |
 | Hosting: `SyntaxError: Invalid or unexpected token` w `start.sh` | Jako plik startowy ustaw **`index.js`**, a nie `start.sh`. |
 | Hosting: `Cannot find module 'discord.js'` | Ustaw plik startowy na `index.js` – doinstaluje zależności sam – albo wgraj pliki do katalogu głównego. |
 | Panel przestał się odświeżać przy bardzo dużym serwerze | Budowa trwa dalej w tle; podsumowanie trafi na kanał ekipy i w wiadomości prywatnej. |
@@ -245,7 +281,7 @@ kreator-serwera/
 │   │   ├── content.js          # regulamin, informacje, opis ról, FAQ…
 │   │   └── naming.js           # style nazw, parsowanie list i kolorów
 │   ├── data/                   # katalogi: typy serwerów, moduły, role, style, AutoMod
-│   ├── features/               # przycisk weryfikacji (działa na stałe)
+│   ├── access/                 # kody dostępu (codes.js) i komendy konsoli (console.js)
 │   └── utils/                  # logger, tłumaczenia PL/EN
 ├── test/                       # testy (atrapa Discorda – bez tokenu)
 ├── .env.example
@@ -262,7 +298,8 @@ npm test
 Testy nie łączą się z Discordem – używają atrapy serwera, która sprawdza wszystkie limity Discorda
 (długości nazw, 50 kanałów na kategorię, 500 kanałów, 250 ról, limity embedów i komponentów, wymagania trybu Społeczności, reguły AutoMod).
 Symulują pełne przejście kreatora dla każdego typu serwera i pełną budowę w trybie dodawania i czyszczenia,
-a także `/usun` (każda opcja, przerwanie, blokady, tylko właściciel) oraz kopię zapasową z przywróceniem 1:1.
+a także `/usun` (każda opcja, przerwanie, blokady, tylko właściciel), kopię zapasową z przywróceniem 1:1
+oraz kody dostępu (generowanie, konsola, wpisywanie kodu, zużycie i zwrot przy cofnięciu, limit prób).
 
 ---
 

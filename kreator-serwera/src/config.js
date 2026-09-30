@@ -52,6 +52,10 @@ const config = {
   sessionTimeoutMinutes: intFromEnv('SESSION_TIMEOUT_MIN', 30, 5, 120),
   /** Czy tylko właściciel serwera może używać /stworz (domyślnie: każdy z uprawnieniem Administrator). */
   ownerOnly: /^(1|true|tak|yes)$/i.test(process.env.OWNER_ONLY || ''),
+  /** Czy /stworz wymaga kodu dostępu wygenerowanego w konsoli (domyślnie tak; /usun działa zawsze). */
+  requireCode: !/^(0|false|nie|no|off)$/i.test((process.env.REQUIRE_CODE || '').trim()),
+  /** Plik z kodami dostępu (względem folderu bota). Nie usuwaj go przy aktualizacji bota! */
+  codesFile: path.resolve(PROJECT_DIR, (process.env.CODES_FILE || '').trim() || path.join('data', 'kody.json')),
 };
 
 function validateConfig() {
