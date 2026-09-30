@@ -304,6 +304,7 @@ Nawet przy własnych ustawieniach kanał weryfikacji, regulamin (przy weryfikacj
 | `/stworz` prosi o kod | Tak ma być – wygeneruj kod w konsoli bota komendą `kod`. Do testów możesz wyłączyć kody: `REQUIRE_CODE=false`. |
 | Konsola nie reaguje na `kod` | Wpisuj komendy w polu pod konsolą na Wispbyte (bot musi być uruchomiony). Lista komend: `pomoc`. |
 | Okienko pokazuje „Coś poszło nie tak”, a panel pod nim i tak się zmienił | Discord czeka na odpowiedź bota tylko 3 s. Od wersji 2.1.1 bot potwierdza formularze od razu. Jeśli błąd wraca, sprawdź w konsoli ostrzeżenie „⏱️ Interakcja dotarła do bota po … s” – to znak, że hosting jest przeciążony. Kod nie przepada: jest przypisany do serwera i zużywa się dopiero przy budowie. |
+| Panel kreatora zniknął (np. po odświeżeniu Discorda) albo się zawiesił | Wpisz ponownie `/stworz` – wrócisz do otwartego kreatora w tym samym kroku, z zachowanymi odpowiedziami. Od nowa: **Anuluj** w panelu, potem `/stworz`. |
 | Panel kreatora długo się odświeża | Bot przygotowuje ekran w kilka milisekund – resztę zajmuje droga hosting ↔ Discord. Wpisz w konsoli `test`: pokaże, czy winne jest łącze, czy procesor hostingu. Krok „Grafika” jest wolniejszy, bo wysyła obrazek podglądu. |
 | „Baza kodów jest niedostępna” | Plik `data/kody.json` jest uszkodzony – przywróć go z kopii (bot nie nadpisze uszkodzonego pliku). |
 | „Onboarding pominięty” w podsumowaniu | Onboarding wymaga trybu Społeczności, **nie działa z sekcją „Weryfikacja”** i potrzebuje min. 7 kanałów widocznych dla wszystkich (5 z pisaniem). Powód jest w uwagach. |

@@ -543,6 +543,16 @@ function createWizard({
     if (problem) return interaction.reply({ ...problem, flags: MessageFlags.Ephemeral });
     const attachment = interaction.options?.getAttachment?.('projekt') || null;
 
+    // Otwarty kreator tej osoby – wracamy do niego z zachowanymi odpowiedziami (np. panel zniknął
+    // po odświeżeniu Discorda albo się zawiesił). Nowy start: „Anuluj” w panelu i /stworz.
+    const existing = store.get(interaction.guildId);
+    if (existing && existing.userId === interaction.user.id && !attachment) {
+      store.touch(existing);
+      if (existing.step !== 'intro') existing.flash = '♻️ Wróciłeś do otwartego kreatora – Twoje odpowiedzi są zachowane. Chcesz zacząć od nowa? Kliknij **Anuluj** i użyj /stworz ponownie.';
+      log.info(`Wznowiona sesja ${existing.id} na serwerze ${interaction.guild.name} (${interaction.guildId}) – ${interaction.user.tag}, krok: ${existing.step}`);
+      return show(interaction, existing);
+    }
+
     if (needsCode(interaction.user.id)) {
       const grant = grantOf(interaction.guildId);
       if (grant?.error) return interaction.reply({ ...codeFrame({ error: grant.error }), flags: MessageFlags.Ephemeral });

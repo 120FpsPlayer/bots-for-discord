@@ -215,3 +215,31 @@ test('bot bez uprawnienia Administrator – przycisk startu jest wyłączony', a
   const startButton = componentsOf(i.state.replies[0]).find((c) => c.custom_id?.endsWith(':n:start'));
   assert.equal(startButton.disabled, true);
 });
+
+test('/stworz wraca do otwartego kreatora tej samej osoby – odpowiedzi zostają, stary panel dalej działa', async () => {
+  const guild = new FakeGuild({ ownerId: '1' });
+  const store = new SessionStore();
+  const wizard = createWizard({ store, config, runBuild: async () => {} });
+  await wizard.start(createInteraction({ guild, kind: 'command' }));
+  const s = store.get(guild.id);
+  s.typeChosen = true;
+  s.step = 'onboarding';
+  s.answers.basics.name = 'Moja Arena';
+
+  const again = createInteraction({ guild, kind: 'command' });
+  await wizard.start(again);
+  assert.equal(store.get(guild.id), s, 'ta sama sesja');
+  assert.equal(s.answers.basics.name, 'Moja Arena');
+  const shown = again.state.replies[0].embeds[0].data;
+  assert.match(shown.title, /Onboarding/);
+  assert.match(shown.description, /Wróciłeś do otwartego kreatora/);
+
+  const click = createInteraction({ guild, customId: `wz:${s.id}:s:obon`, values: ['on'] });
+  await wizard.handle(click);
+  assert.equal(s.answers.onboarding.enabled, true, 'przyciski starego panelu nadal działają');
+
+  // Plik projektu zawsze otwiera nową sesję.
+  const withFile = createInteraction({ guild, kind: 'command', attachment: { name: 'zdjecie.png', size: 10, url: 'x', contentType: 'image/png' } });
+  await wizard.start(withFile);
+  assert.match(withFile.state.edits[0].embeds[0].data.title, /Nie udało się wczytać/);
+});
