@@ -1,0 +1,99 @@
+{
+  "brand": {
+    "name": "Support",
+    "color": "#5865F2",
+    "footer": "Ticket System",
+    "logo": null
+  },
+  "panel": {
+    "title": "🎫 Help Center",
+    "description": "Got a question, a problem or something to report? Pick the right category below – we'll open a **private channel** that only you and our team can see.",
+    "rules": [
+      "Describe your issue in as much detail as possible – it speeds things up",
+      "Don't ping the staff – they are notified automatically",
+      "One issue = one ticket",
+      "Tickets without a reply are closed automatically"
+    ],
+    "image": null,
+    "buttonLabel": "Open",
+    "showStats": true
+  },
+  "workingHours": {
+    "enabled": true,
+    "timezone": "UTC",
+    "days": [1, 2, 3, 4, 5, 6, 0],
+    "from": "10:00",
+    "to": "22:00"
+  },
+  "channelNameFormat": "{prio}{prefix}-{number}",
+  "ticketTypes": [
+    {
+      "id": "support",
+      "label": "General Support",
+      "emoji": "🛠️",
+      "description": "Questions and technical issues",
+      "channelPrefix": "support",
+      "staffRoleIds": [],
+      "questions": [
+        { "id": "subject", "label": "Subject", "style": "short", "placeholder": "E.g. my role is not working", "required": true, "maxLength": 100 },
+        { "id": "details", "label": "Describe the issue in detail", "style": "paragraph", "placeholder": "What happened, when, and what have you already tried?", "required": true, "maxLength": 1000 }
+      ]
+    },
+    {
+      "id": "report",
+      "label": "Report a Player",
+      "emoji": "🚨",
+      "description": "Report someone breaking the rules",
+      "channelPrefix": "report",
+      "staffRoleIds": [],
+      "questions": [
+        { "id": "who", "label": "Who are you reporting? (name / ID)", "style": "short", "required": true, "maxLength": 100 },
+        { "id": "what", "label": "What happened?", "style": "paragraph", "required": true, "maxLength": 1000 },
+        { "id": "proof", "label": "Evidence (links to screenshots)", "style": "paragraph", "required": false, "maxLength": 500 }
+      ]
+    },
+    {
+      "id": "partnership",
+      "label": "Partnership",
+      "emoji": "🤝",
+      "description": "Partnerships and collaboration proposals",
+      "channelPrefix": "partnership",
+      "staffRoleIds": [],
+      "questions": [
+        { "id": "offer", "label": "Your proposal", "style": "paragraph", "required": true, "maxLength": 1000 }
+      ]
+    },
+    {
+      "id": "appeal",
+      "label": "Punishment Appeal",
+      "emoji": "⚖️",
+      "description": "Appeal a ban, mute or warning",
+      "channelPrefix": "appeal",
+      "staffRoleIds": [],
+      "questions": [
+        { "id": "punishment", "label": "What punishment did you get and when?", "style": "short", "required": true, "maxLength": 150 },
+        { "id": "why", "label": "Why should it be lifted?", "style": "paragraph", "required": true, "maxLength": 1000 }
+      ]
+    }
+  ],
+  "snippets": [
+    { "id": "greeting", "name": "👋 Greeting", "content": "Hi {user}! My name is {staff} and I'll be handling your ticket. Give me a moment to look into it." },
+    { "id": "details", "name": "🔍 Ask for details", "content": "{user}, we need a bit more information. Please describe exactly what happened and attach screenshots if you can." },
+    { "id": "wait", "name": "⏳ Please wait", "content": "I've passed this on, {user}. We'll get back to you as soon as possible – thanks for your patience!" },
+    { "id": "resolved", "name": "✅ Resolved", "content": "Looks like the issue has been resolved 🎉 If you need anything else, just write here – otherwise we'll close the ticket." },
+    { "id": "rules", "name": "📜 Rules", "content": "{user}, please make sure you've read the rules of **{server}**. Thank you!" }
+  ],
+  "defaults": {
+    "maxOpenTicketsPerUser": 2,
+    "autoCloseHours": 48,
+    "autoCloseWarningHours": 24,
+    "deleteDelaySeconds": 5,
+    "dmTranscript": true,
+    "askForRating": true,
+    "openCooldownSeconds": 60,
+    "dmOnOpen": true,
+    "pingStaffCooldownMinutes": 30,
+    "pingStaffAfterMinutes": 10,
+    "panelRefreshMinutes": 5
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "ticket-bot-en",
+  "version": "1.0.0",
+  "description": "Advanced Discord ticket bot (discord.js v14)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "node src/deploy-commands.js",
+    "check": "node --check index.js && node --check src/index.js && node scripts/check.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "discord.js": "^14.27.0",
+    "dotenv": "^16.4.5"
+  }
+}

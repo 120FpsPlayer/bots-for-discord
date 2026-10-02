@@ -2,6 +2,8 @@
 
 Bot do obsługi zgłoszeń, napisany w **discord.js v14**. Cały interfejs jest po polsku. Dane zapisują się w pliku, więc nie potrzebujesz bazy danych – wystarczy Node.js.
 
+> 🇬🇧 **English version:** w folderze [`english/`](english/) jest identyczny bot w całości po angielsku (komendy, przyciski, karty, transkrypty i README).
+
 ---
 
 ## 📑 Spis treści
