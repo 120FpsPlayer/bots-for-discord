@@ -41,6 +41,7 @@ A support ticket bot built with **discord.js v14**. Fully in English. Data is st
 - **Statistics:** average rating, rating breakdown, response times, per-category split, weekly trend and a 🥇🥈🥉 leaderboard.
 
 ### 👤 For users
+- **🛒 Place an Order:** a dedicated category with an order form – product, details, budget, payment method and deadline.
 - **A form before opening** (up to 5 questions per category).
 - **A DM after opening** with a "Go to ticket" button.
 - **🔔 Call support** when nobody has replied for a while (with a cooldown).
@@ -154,7 +155,8 @@ Spaces, semicolons, quotes and copied role mentions `<@&111…>` work too. You c
 | `OWNER_IDS` | 👑 **Bot owners** (**user** IDs, not roles) | Everything |
 | `ADMIN_ROLE_IDS` | 🛡️ **Administrators** | `/setup`, `/panel`, `/blacklist`, deleting tickets, taking over other people's tickets. They see all tickets. |
 | `SUPPORT_ROLE_IDS` | 🎧 **Staff** | See and handle all tickets: claim, close, add people, change priority, send canned replies, view stats. |
-| `SUPPORT_ROLE_IDS_SUPPORT` | 🎧 Staff for the **General Support** category only | Same, but only in that category |
+| `SUPPORT_ROLE_IDS_ORDER` | 🛒 Staff for the **Place an Order** category only (e.g. sellers) | Same, but only in that category |
+| `SUPPORT_ROLE_IDS_SUPPORT` | 🎧 Staff for the **General Support** category only | Same as above |
 | `SUPPORT_ROLE_IDS_REPORT` | 🎧 Staff for the **Report a Player** category only | Same as above |
 | `SUPPORT_ROLE_IDS_PARTNERSHIP` | 🎧 Staff for the **Partnership** category only | Same as above |
 | `SUPPORT_ROLE_IDS_APPEAL` | 🎧 Staff for the **Punishment Appeal** category only | Same as above |

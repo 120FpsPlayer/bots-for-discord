@@ -21,12 +21,70 @@
   "workingHours": {
     "enabled": true,
     "timezone": "UTC",
-    "days": [1, 2, 3, 4, 5, 6, 0],
+    "days": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      0
+    ],
     "from": "10:00",
     "to": "22:00"
   },
   "channelNameFormat": "{prio}{prefix}-{number}",
   "ticketTypes": [
+    {
+      "id": "order",
+      "label": "Place an Order",
+      "emoji": "🛒",
+      "description": "Order a product or service from us",
+      "channelPrefix": "order",
+      "staffRoleIds": [],
+      "questions": [
+        {
+          "id": "product",
+          "label": "What would you like to order?",
+          "style": "short",
+          "placeholder": "E.g. custom bot, logo, server setup",
+          "required": true,
+          "maxLength": 100
+        },
+        {
+          "id": "details",
+          "label": "Order details",
+          "style": "paragraph",
+          "placeholder": "Describe exactly what you need – features, style, quantity, examples…",
+          "required": true,
+          "maxLength": 1000
+        },
+        {
+          "id": "budget",
+          "label": "Your budget",
+          "style": "short",
+          "placeholder": "E.g. $20, €50, negotiable",
+          "required": true,
+          "maxLength": 50
+        },
+        {
+          "id": "payment",
+          "label": "Preferred payment method",
+          "style": "short",
+          "placeholder": "E.g. PayPal, card, crypto",
+          "required": false,
+          "maxLength": 50
+        },
+        {
+          "id": "deadline",
+          "label": "Deadline",
+          "style": "short",
+          "placeholder": "E.g. within a week, no rush",
+          "required": false,
+          "maxLength": 50
+        }
+      ]
+    },
     {
       "id": "support",
       "label": "General Support",
@@ -35,8 +93,22 @@
       "channelPrefix": "support",
       "staffRoleIds": [],
       "questions": [
-        { "id": "subject", "label": "Subject", "style": "short", "placeholder": "E.g. my role is not working", "required": true, "maxLength": 100 },
-        { "id": "details", "label": "Describe the issue in detail", "style": "paragraph", "placeholder": "What happened, when, and what have you already tried?", "required": true, "maxLength": 1000 }
+        {
+          "id": "subject",
+          "label": "Subject",
+          "style": "short",
+          "placeholder": "E.g. my role is not working",
+          "required": true,
+          "maxLength": 100
+        },
+        {
+          "id": "details",
+          "label": "Describe the issue in detail",
+          "style": "paragraph",
+          "placeholder": "What happened, when, and what have you already tried?",
+          "required": true,
+          "maxLength": 1000
+        }
       ]
     },
     {
@@ -47,9 +119,27 @@
       "channelPrefix": "report",
       "staffRoleIds": [],
       "questions": [
-        { "id": "who", "label": "Who are you reporting? (name / ID)", "style": "short", "required": true, "maxLength": 100 },
-        { "id": "what", "label": "What happened?", "style": "paragraph", "required": true, "maxLength": 1000 },
-        { "id": "proof", "label": "Evidence (links to screenshots)", "style": "paragraph", "required": false, "maxLength": 500 }
+        {
+          "id": "who",
+          "label": "Who are you reporting? (name / ID)",
+          "style": "short",
+          "required": true,
+          "maxLength": 100
+        },
+        {
+          "id": "what",
+          "label": "What happened?",
+          "style": "paragraph",
+          "required": true,
+          "maxLength": 1000
+        },
+        {
+          "id": "proof",
+          "label": "Evidence (links to screenshots)",
+          "style": "paragraph",
+          "required": false,
+          "maxLength": 500
+        }
       ]
     },
     {
@@ -60,7 +150,13 @@
       "channelPrefix": "partnership",
       "staffRoleIds": [],
       "questions": [
-        { "id": "offer", "label": "Your proposal", "style": "paragraph", "required": true, "maxLength": 1000 }
+        {
+          "id": "offer",
+          "label": "Your proposal",
+          "style": "paragraph",
+          "required": true,
+          "maxLength": 1000
+        }
       ]
     },
     {
@@ -71,17 +167,59 @@
       "channelPrefix": "appeal",
       "staffRoleIds": [],
       "questions": [
-        { "id": "punishment", "label": "What punishment did you get and when?", "style": "short", "required": true, "maxLength": 150 },
-        { "id": "why", "label": "Why should it be lifted?", "style": "paragraph", "required": true, "maxLength": 1000 }
+        {
+          "id": "punishment",
+          "label": "What punishment did you get and when?",
+          "style": "short",
+          "required": true,
+          "maxLength": 150
+        },
+        {
+          "id": "why",
+          "label": "Why should it be lifted?",
+          "style": "paragraph",
+          "required": true,
+          "maxLength": 1000
+        }
       ]
     }
   ],
   "snippets": [
-    { "id": "greeting", "name": "👋 Greeting", "content": "Hi {user}! My name is {staff} and I'll be handling your ticket. Give me a moment to look into it." },
-    { "id": "details", "name": "🔍 Ask for details", "content": "{user}, we need a bit more information. Please describe exactly what happened and attach screenshots if you can." },
-    { "id": "wait", "name": "⏳ Please wait", "content": "I've passed this on, {user}. We'll get back to you as soon as possible – thanks for your patience!" },
-    { "id": "resolved", "name": "✅ Resolved", "content": "Looks like the issue has been resolved 🎉 If you need anything else, just write here – otherwise we'll close the ticket." },
-    { "id": "rules", "name": "📜 Rules", "content": "{user}, please make sure you've read the rules of **{server}**. Thank you!" }
+    {
+      "id": "greeting",
+      "name": "👋 Greeting",
+      "content": "Hi {user}! My name is {staff} and I'll be handling your ticket. Give me a moment to look into it."
+    },
+    {
+      "id": "quote",
+      "name": "💰 Order quote",
+      "content": "Thanks for your order, {user}! We've reviewed your request – {staff} will send you a price and estimated delivery time shortly."
+    },
+    {
+      "id": "payment",
+      "name": "💳 Payment received",
+      "content": "Payment received, {user} – thank you! 🎉 We're starting work on your order now and will keep you updated here."
+    },
+    {
+      "id": "details",
+      "name": "🔍 Ask for details",
+      "content": "{user}, we need a bit more information. Please describe exactly what happened and attach screenshots if you can."
+    },
+    {
+      "id": "wait",
+      "name": "⏳ Please wait",
+      "content": "I've passed this on, {user}. We'll get back to you as soon as possible – thanks for your patience!"
+    },
+    {
+      "id": "resolved",
+      "name": "✅ Resolved",
+      "content": "Looks like the issue has been resolved 🎉 If you need anything else, just write here – otherwise we'll close the ticket."
+    },
+    {
+      "id": "rules",
+      "name": "📜 Rules",
+      "content": "{user}, please make sure you've read the rules of **{server}**. Thank you!"
+    }
   ],
   "defaults": {
     "maxOpenTicketsPerUser": 2,
