@@ -99,4 +99,9 @@ process.on('SIGINT', shutdown);
 process.on('SIGTERM', shutdown);
 process.on('unhandledRejection', (err) => console.error('[unhandledRejection]', err));
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(process.env.DISCORD_TOKEN).catch((err) => {
+  if (/disallowed intents/i.test(err.message)) console.error("❌ Discord rejected the connection: the bot doesn't have MESSAGE CONTENT INTENT enabled.\n   Enable it: https://discord.com/developers/applications → your bot → Bot tab → Privileged Gateway Intents → MESSAGE CONTENT INTENT → Save Changes, then restart the bot.");
+  else if (err.code === 'TokenInvalid' || /token/i.test(err.message)) console.error('❌ Invalid DISCORD_TOKEN. Generate a new one (Bot tab → Reset Token), paste it into .env and restart the bot.');
+  else console.error('❌ Failed to log in:', err);
+  process.exit(1);
+});
