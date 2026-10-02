@@ -41,7 +41,7 @@ A support ticket bot built with **discord.js v14**. Fully in English. Data is st
 - **Statistics:** average rating, rating breakdown, response times, per-category split, weekly trend and a 🥇🥈🥉 leaderboard.
 
 ### 👤 For users
-- **🛒 Place an Order:** a dedicated category with an order form – product, details, budget, payment method and deadline.
+- **🛒 Place an Order:** a dedicated category with an order form – what game and payment method.
 - **A form before opening** (up to 5 questions per category).
 - **A DM after opening** with a "Go to ticket" button.
 - **🔔 Call support** when nobody has replied for a while (with a cooldown).

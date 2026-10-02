@@ -44,44 +44,20 @@
       "staffRoleIds": [],
       "questions": [
         {
-          "id": "product",
-          "label": "What would you like to order?",
+          "id": "game",
+          "label": "What game?",
           "style": "short",
-          "placeholder": "E.g. custom bot, logo, server setup",
+          "placeholder": "E.g. Fortnite, Minecraft, GTA V",
           "required": true,
           "maxLength": 100
         },
         {
-          "id": "details",
-          "label": "Order details",
-          "style": "paragraph",
-          "placeholder": "Describe exactly what you need – features, style, quantity, examples…",
-          "required": true,
-          "maxLength": 1000
-        },
-        {
-          "id": "budget",
-          "label": "Your budget",
-          "style": "short",
-          "placeholder": "E.g. $20, €50, negotiable",
-          "required": true,
-          "maxLength": 50
-        },
-        {
           "id": "payment",
-          "label": "Preferred payment method",
+          "label": "Payment method",
           "style": "short",
           "placeholder": "E.g. PayPal, card, crypto",
-          "required": false,
-          "maxLength": 50
-        },
-        {
-          "id": "deadline",
-          "label": "Deadline",
-          "style": "short",
-          "placeholder": "E.g. within a week, no rush",
-          "required": false,
-          "maxLength": 50
+          "required": true,
+          "maxLength": 100
         }
       ]
     },
